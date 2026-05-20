@@ -25,7 +25,7 @@ CONTROL_PLANE_URL=http://localhost:3777 pnpm wake:demo
 
 ## Daytona Provider
 
-The Daytona provider creates an ephemeral Daytona sandbox, mounts one persistent Daytona volume at separate subpaths for `/agent-home` and `/workspace`, uploads the shared runtime bundle and harness, executes the runtime, parses JSONL events, and deletes the sandbox.
+The Daytona provider creates an ephemeral Daytona sandbox, mounts one persistent Daytona volume at separate subpaths for `/agent-home` and `/workspace`, uploads the shared runtime bundle and harness, executes the runtime, follows Daytona session logs to stream JSONL events back to the control plane when the SDK supports it, and deletes the sandbox. It keeps a buffered `executeCommand` fallback for older/fake providers.
 
 Required auth is either `DAYTONA_API_KEY` or both `DAYTONA_JWT_TOKEN` and `DAYTONA_ORGANIZATION_ID`:
 

@@ -57,6 +57,43 @@ class FakeSandbox implements DaytonaSandboxLike {
   }
 }
 
+class StreamingFakeSandbox extends FakeSandbox {
+  sessionCreateCalls: string[] = [];
+  sessionDeleteCalls: string[] = [];
+  sessionExecCalls: Array<{ sessionId: string; req: { command: string; runAsync?: boolean; cwd?: string; envs?: Record<string, string> } }> = [];
+  sessionLogCalls: Array<{ sessionId: string; commandId: string }> = [];
+
+  override process = {
+    ...this.process,
+    createSession: async (sessionId: string) => {
+      this.sessionCreateCalls.push(sessionId);
+    },
+    executeSessionCommand: async (
+      sessionId: string,
+      req: { command: string; runAsync?: boolean; cwd?: string; envs?: Record<string, string> },
+    ) => {
+      this.sessionExecCalls.push({ sessionId, req });
+      return { cmdId: "cmd-1" };
+    },
+    getSessionCommandLogs: async (
+      sessionId: string,
+      commandId: string,
+      onStdout: (chunk: string) => void,
+      onStderr: (chunk: string) => void,
+    ) => {
+      this.sessionLogCalls.push({ sessionId, commandId });
+      onStdout(`${JSON.stringify({ type: "runtime_started", runId: "run-1", timestamp: "2026-05-18T00:00:00.000Z" })}\n`);
+      onStdout(JSON.stringify({ type: "run_finished", runId: "run-1", timestamp: "2026-05-18T00:00:00.001Z", status: "succeeded" }).slice(0, 40));
+      onStdout(`${JSON.stringify({ type: "run_finished", runId: "run-1", timestamp: "2026-05-18T00:00:00.001Z", status: "succeeded" }).slice(40)}\n`);
+      onStderr("diagnostic warning\n");
+    },
+    getSessionCommand: async () => ({ exitCode: 0 }),
+    deleteSession: async (sessionId: string) => {
+      this.sessionDeleteCalls.push(sessionId);
+    },
+  };
+}
+
 class FakeDaytona implements DaytonaClientLike {
   sandbox = new FakeSandbox();
   volumeGetCalls: Array<{ name: string; create: boolean }> = [];
@@ -73,6 +110,10 @@ class FakeDaytona implements DaytonaClientLike {
     this.createParams.push(params);
     return this.sandbox;
   }
+}
+
+class StreamingFakeDaytona extends FakeDaytona {
+  override sandbox = new StreamingFakeSandbox();
 }
 
 function payload(): RuntimeWakePayload {
@@ -186,6 +227,47 @@ test("uploads runtime files and parses JSONL events from Daytona command output"
     "node '/agentruntime/harness/run.mjs' '/run/wake.json'",
   );
   expect(events.map((event) => event.type)).toEqual(["runtime_started", "run_finished"]);
+});
+
+test("streams JSONL events from Daytona followed session logs when available", async () => {
+  const root = await makeTempDir();
+  const sharedPath = path.join(root, "shared");
+  await mkdir(path.join(sharedPath, "skills"), { recursive: true });
+  await writeFile(path.join(sharedPath, "manifest.json"), '{"version":"v1"}\n', "utf8");
+
+  const fake = new StreamingFakeDaytona();
+  const provider = new DaytonaSandboxProvider({
+    client: fake,
+    volumeName: "poc-volume",
+  });
+  const handle = await provider.startRun({
+    runId: "run-1",
+    agentId: "agent-main",
+    workspaceId: "workspace-demo",
+    agentHomePath: path.join(root, "agent-home"),
+    workspacePath: path.join(root, "workspace"),
+    sharedPath,
+    runPath: path.join(root, "run"),
+    wakePath: path.join(root, "run", "wake.json"),
+  });
+
+  const events = [];
+  for await (const event of provider.exec({ handle, payload: payload() })) {
+    events.push(event);
+  }
+
+  expect(fake.sandbox.sessionCreateCalls).toEqual(["run-run-1"]);
+  expect(fake.sandbox.sessionExecCalls[0]).toEqual({
+    sessionId: "run-run-1",
+    req: expect.objectContaining({
+      command: "node '/agentruntime/harness/run.mjs' '/run/wake.json'",
+      cwd: "/workspace",
+      runAsync: true,
+    }),
+  });
+  expect(fake.sandbox.sessionLogCalls).toEqual([{ sessionId: "run-run-1", commandId: "cmd-1" }]);
+  expect(fake.sandbox.sessionDeleteCalls).toEqual(["run-run-1"]);
+  expect(events.map((event) => event.type)).toEqual(["runtime_started", "run_finished", "stderr"]);
 });
 
 test("uploads the Pi runtime bundle when agent runtime mode is pi", async () => {

@@ -21,6 +21,20 @@ export type DaytonaSandboxLike = {
       env?: Record<string, string>,
       timeout?: number,
     ): Promise<{ exitCode: number; result: string; artifacts?: { stdout?: string } }>;
+    createSession?(sessionId: string): Promise<void>;
+    executeSessionCommand?(
+      sessionId: string,
+      req: { command: string; runAsync?: boolean; cwd?: string; envs?: Record<string, string>; suppressInputEcho?: boolean },
+      timeout?: number,
+    ): Promise<{ cmdId?: string; exitCode?: number; stdout?: string; output?: string }>;
+    getSessionCommandLogs?(
+      sessionId: string,
+      commandId: string,
+      onStdout: (chunk: string) => void,
+      onStderr: (chunk: string) => void,
+    ): Promise<void>;
+    getSessionCommand?(sessionId: string, commandId: string): Promise<{ exitCode?: number }>;
+    deleteSession?(sessionId: string): Promise<void>;
   };
   delete(timeout?: number): Promise<void>;
 };
@@ -83,9 +97,55 @@ function createDaytonaClient(options: DaytonaSandboxProviderOptions): DaytonaCli
   return new Daytona(config) as unknown as DaytonaClientLike;
 }
 
-function parseJsonlEvents(output: string, runId: string): RunEvent[] {
+class AsyncEventQueue<T> {
+  private readonly values: T[] = [];
+  private readonly waiters: Array<(result: IteratorResult<T>) => void> = [];
+  private done = false;
+  private failure: unknown;
+
+  push(value: T) {
+    const waiter = this.waiters.shift();
+    if (waiter) {
+      waiter({ done: false, value });
+      return;
+    }
+    this.values.push(value);
+  }
+
+  end() {
+    this.done = true;
+    while (this.waiters.length > 0) {
+      this.waiters.shift()?.({ done: true, value: undefined });
+    }
+  }
+
+  error(error: unknown) {
+    this.failure = error;
+    this.end();
+  }
+
+  async *[Symbol.asyncIterator](): AsyncIterableIterator<T> {
+    while (true) {
+      if (this.values.length > 0) {
+        yield this.values.shift() as T;
+        continue;
+      }
+      if (this.failure) throw this.failure;
+      if (this.done) return;
+
+      const result = await new Promise<IteratorResult<T>>((resolve) => this.waiters.push(resolve));
+      if (result.done) {
+        if (this.failure) throw this.failure;
+        return;
+      }
+      yield result.value;
+    }
+  }
+}
+
+function parseJsonlLines(lines: string[], runId: string): RunEvent[] {
   const events: RunEvent[] = [];
-  for (const line of output.split(/\r?\n/)) {
+  for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     try {
@@ -100,6 +160,27 @@ function parseJsonlEvents(output: string, runId: string): RunEvent[] {
     events.push({ type: "stdout", runId, timestamp: nowIso(), data: trimmed });
   }
   return events;
+}
+
+function createJsonlEventParser(runId: string) {
+  let buffered = "";
+  return {
+    push(chunk: string): RunEvent[] {
+      buffered += chunk;
+      const lines = buffered.split(/\r?\n/);
+      buffered = lines.pop() ?? "";
+      return parseJsonlLines(lines, runId);
+    },
+    flush(): RunEvent[] {
+      const events = parseJsonlLines([buffered], runId);
+      buffered = "";
+      return events;
+    },
+  };
+}
+
+function parseJsonlEvents(output: string, runId: string): RunEvent[] {
+  return parseJsonlLines(output.split(/\r?\n/), runId);
 }
 
 function remoteRuntimeSource() {
@@ -353,6 +434,15 @@ function runtimeCommandEnv(): Record<string, string> {
   return env;
 }
 
+function supportsSessionStreaming(process: DaytonaSandboxLike["process"]) {
+  return (
+    typeof process.createSession === "function" &&
+    typeof process.executeSessionCommand === "function" &&
+    typeof process.getSessionCommandLogs === "function" &&
+    typeof process.getSessionCommand === "function"
+  );
+}
+
 async function listFilesRecursive(root: string): Promise<Array<{ localPath: string; relativePath: string }>> {
   const entries: Array<{ localPath: string; relativePath: string }> = [];
 
@@ -481,21 +571,13 @@ export class DaytonaSandboxProvider implements SandboxProvider {
       }
     }
 
-    const result = await handle.sandbox.process.executeCommand(
-      `node ${shellQuote(path.posix.join(REMOTE_HARNESS, "run.mjs"))} ${shellQuote(REMOTE_WAKE)}`,
-      REMOTE_WORKSPACE,
-      runtimeCommandEnv(),
-      this.commandTimeoutSec,
-    );
-
-    const stdout = result.artifacts?.stdout ?? result.result ?? "";
-    for (const event of parseJsonlEvents(stdout, input.payload.run.id)) {
-      yield event;
+    const command = `node ${shellQuote(path.posix.join(REMOTE_HARNESS, "run.mjs"))} ${shellQuote(REMOTE_WAKE)}`;
+    if (supportsSessionStreaming(handle.sandbox.process)) {
+      yield* this.execStreamingSession(handle.sandbox, command, input.payload.run.id);
+      return;
     }
 
-    if (result.exitCode !== 0) {
-      throw new Error(`Daytona runtime exited with code ${result.exitCode}`);
-    }
+    yield* this.execBufferedCommand(handle.sandbox, command, input.payload.run.id);
   }
 
   async stop(handle: SandboxHandle): Promise<void> {
@@ -536,6 +618,80 @@ export class DaytonaSandboxProvider implements SandboxProvider {
     await this.ensurePersistentFile(sandbox, path.posix.join(REMOTE_AGENT_HOME, "state.json"), '{\n  "version": 1\n}\n');
     await this.ensurePersistentFile(sandbox, path.posix.join(REMOTE_WORKSPACE, "AGENTS.md"), "# Workspace Instructions\n\nThis workspace represents one business or project operated by the agent.\n");
     await this.ensurePersistentFile(sandbox, path.posix.join(REMOTE_WORKSPACE, "TASKS.md"), "# Tasks\n\nCanonical tasks live in the control plane. This file is a local mirror for PoC visibility.\n");
+  }
+
+  private async *execBufferedCommand(sandbox: DaytonaSandboxLike, command: string, runId: string): AsyncIterable<RunEvent> {
+    const result = await sandbox.process.executeCommand(
+      command,
+      REMOTE_WORKSPACE,
+      runtimeCommandEnv(),
+      this.commandTimeoutSec,
+    );
+
+    const stdout = result.artifacts?.stdout ?? result.result ?? "";
+    for (const event of parseJsonlEvents(stdout, runId)) {
+      yield event;
+    }
+
+    if (result.exitCode !== 0) {
+      throw new Error(`Daytona runtime exited with code ${result.exitCode}`);
+    }
+  }
+
+  private async *execStreamingSession(sandbox: DaytonaSandboxLike, command: string, runId: string): AsyncIterable<RunEvent> {
+    const sessionId = `run-${runId}`.replace(/[^A-Za-z0-9_.-]/g, "-").slice(0, 63);
+    await sandbox.process.createSession?.(sessionId);
+
+    try {
+      const response = await sandbox.process.executeSessionCommand?.(
+        sessionId,
+        {
+          command,
+          cwd: REMOTE_WORKSPACE,
+          envs: runtimeCommandEnv(),
+          runAsync: true,
+          suppressInputEcho: true,
+        },
+        this.commandTimeoutSec,
+      );
+      const commandId = response?.cmdId;
+      if (!commandId) {
+        throw new Error("Daytona session command did not return a command id");
+      }
+
+      const events = new AsyncEventQueue<RunEvent>();
+      const parser = createJsonlEventParser(runId);
+      const logsPromise = sandbox.process
+        .getSessionCommandLogs?.(
+          sessionId,
+          commandId,
+          (chunk) => {
+            for (const event of parser.push(chunk)) events.push(event);
+          },
+          (chunk) => {
+            if (chunk.trim()) events.push({ type: "stderr", runId, timestamp: nowIso(), data: chunk.trimEnd() });
+          },
+        )
+        .then(() => {
+          for (const event of parser.flush()) events.push(event);
+          events.end();
+        })
+        .catch((error: unknown) => {
+          events.error(error);
+        });
+
+      for await (const event of events) {
+        yield event;
+      }
+      await logsPromise;
+
+      const commandInfo = await sandbox.process.getSessionCommand?.(sessionId, commandId);
+      if (commandInfo?.exitCode && commandInfo.exitCode !== 0) {
+        throw new Error(`Daytona runtime exited with code ${commandInfo.exitCode}`);
+      }
+    } finally {
+      await sandbox.process.deleteSession?.(sessionId);
+    }
   }
 
   private async uploadSharedBundle(sandbox: DaytonaSandboxLike, sharedPath: string) {
