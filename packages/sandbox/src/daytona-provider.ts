@@ -686,7 +686,10 @@ export class DaytonaSandboxProvider implements SandboxProvider {
       await logsPromise;
 
       const commandInfo = await sandbox.process.getSessionCommand?.(sessionId, commandId);
-      if (commandInfo?.exitCode && commandInfo.exitCode !== 0) {
+      if (commandInfo?.exitCode === undefined) {
+        throw new Error("Daytona runtime command finished without an exit code");
+      }
+      if (commandInfo.exitCode !== 0) {
         throw new Error(`Daytona runtime exited with code ${commandInfo.exitCode}`);
       }
     } finally {

@@ -62,6 +62,7 @@ class StreamingFakeSandbox extends FakeSandbox {
   sessionDeleteCalls: string[] = [];
   sessionExecCalls: Array<{ sessionId: string; req: { command: string; runAsync?: boolean; cwd?: string; envs?: Record<string, string> } }> = [];
   sessionLogCalls: Array<{ sessionId: string; commandId: string }> = [];
+  sessionExitCode: number | undefined = 0;
 
   override process = {
     ...this.process,
@@ -87,7 +88,7 @@ class StreamingFakeSandbox extends FakeSandbox {
       onStdout(`${JSON.stringify({ type: "run_finished", runId: "run-1", timestamp: "2026-05-18T00:00:00.001Z", status: "succeeded" }).slice(40)}\n`);
       onStderr("diagnostic warning\n");
     },
-    getSessionCommand: async () => ({ exitCode: 0 }),
+    getSessionCommand: async () => ({ exitCode: this.sessionExitCode }),
     deleteSession: async (sessionId: string) => {
       this.sessionDeleteCalls.push(sessionId);
     },
@@ -268,6 +269,38 @@ test("streams JSONL events from Daytona followed session logs when available", a
   expect(fake.sandbox.sessionLogCalls).toEqual([{ sessionId: "run-run-1", commandId: "cmd-1" }]);
   expect(fake.sandbox.sessionDeleteCalls).toEqual(["run-run-1"]);
   expect(events.map((event) => event.type)).toEqual(["runtime_started", "run_finished", "stderr"]);
+});
+
+test("treats a streamed Daytona command without an exit code as failed", async () => {
+  const root = await makeTempDir();
+  const sharedPath = path.join(root, "shared");
+  await mkdir(sharedPath, { recursive: true });
+  await writeFile(path.join(sharedPath, "manifest.json"), '{"version":"v1"}\n', "utf8");
+
+  const fake = new StreamingFakeDaytona();
+  fake.sandbox.sessionExitCode = undefined;
+  const provider = new DaytonaSandboxProvider({
+    client: fake,
+    volumeName: "poc-volume",
+  });
+  const handle = await provider.startRun({
+    runId: "run-1",
+    agentId: "agent-main",
+    workspaceId: "workspace-demo",
+    agentHomePath: path.join(root, "agent-home"),
+    workspacePath: path.join(root, "workspace"),
+    sharedPath,
+    runPath: path.join(root, "run"),
+    wakePath: path.join(root, "run", "wake.json"),
+  });
+
+  await expect(async () => {
+    for await (const _event of provider.exec({ handle, payload: payload() })) {
+      // Drain streamed output.
+    }
+  }).rejects.toThrow("Daytona runtime command finished without an exit code");
+
+  expect(fake.sandbox.sessionDeleteCalls).toEqual(["run-run-1"]);
 });
 
 test("uploads the Pi runtime bundle when agent runtime mode is pi", async () => {
