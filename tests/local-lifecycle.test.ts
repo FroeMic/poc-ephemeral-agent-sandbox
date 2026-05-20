@@ -56,6 +56,32 @@ class FailingStartSandboxProvider implements SandboxProvider {
   }
 }
 
+class FailedEventSandboxProvider implements SandboxProvider {
+  readonly name = "daytona" as const;
+  stopped: SandboxHandle[] = [];
+
+  async startRun(input: StartRunInput): Promise<SandboxHandle> {
+    return {
+      provider: this.name,
+      sandboxId: `failed-event-${input.runId}`,
+    };
+  }
+
+  async *exec(input: ExecInput) {
+    yield {
+      type: "run_finished" as const,
+      runId: input.payload.run.id,
+      timestamp: "2026-05-20T00:00:00.000Z",
+      status: "failed" as const,
+      error: "runtime reported failure",
+    };
+  }
+
+  async stop(handle: SandboxHandle): Promise<void> {
+    this.stopped.push(handle);
+  }
+}
+
 test("runs the local sandbox lifecycle and preserves workspace state across runs", async () => {
   const dataDir = await makeTempDir();
   const store = await JsonStore.create(path.join(dataDir, "store.json"));
@@ -161,4 +187,34 @@ test("records a failed run when sandbox startup fails before a handle exists", a
       expect.objectContaining({ type: "run_finished", status: "failed", error: "sandbox create exploded" }),
     ]),
   );
+});
+
+test("marks the run failed when the runtime emits a failed finish event", async () => {
+  const dataDir = await makeTempDir();
+  const store = await JsonStore.create(path.join(dataDir, "store.json"));
+  const provider = new FailedEventSandboxProvider();
+  const service = createRunService({
+    repoRoot: process.cwd(),
+    dataDir,
+    controlPlaneUrl: "http://127.0.0.1:3000",
+    sharedBundleVersion: "v1",
+    provider,
+    store,
+  });
+
+  const wake = await service.wake({
+    source: "api",
+    agentId: "agent-main",
+    workspaceId: "workspace-demo",
+    message: "This runtime reports failure",
+  });
+  const completed = await service.waitForRun(wake.runId);
+
+  expect(completed.status).toBe("failed");
+  expect(completed.error).toBe("runtime reported failure");
+  expect(provider.stopped).toEqual([
+    expect.objectContaining({
+      sandboxId: `failed-event-${wake.runId}`,
+    }),
+  ]);
 });

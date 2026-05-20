@@ -130,11 +130,25 @@ export function createRunService(input: {
     };
 
     try {
+      let runtimeFinish: Extract<RunEvent, { type: "run_finished" }> | undefined;
       for await (const event of input.provider.exec({ handle, payload })) {
         await recordEvent(event);
+        if (event.type === "run_finished") {
+          runtimeFinish = event;
+        }
       }
-      currentRun = { ...currentRun, status: "succeeded", finishedAt: nowIso() };
-      await input.store.updateRun(currentRun);
+      if (runtimeFinish?.status === "failed") {
+        currentRun = {
+          ...currentRun,
+          status: "failed",
+          finishedAt: runtimeFinish.timestamp,
+          ...(runtimeFinish.error ? { error: runtimeFinish.error } : {}),
+        };
+        await input.store.updateRun(currentRun);
+      } else {
+        currentRun = { ...currentRun, status: "succeeded", finishedAt: runtimeFinish?.timestamp ?? nowIso() };
+        await input.store.updateRun(currentRun);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await recordEvent({ type: "run_finished", runId: run.id, timestamp: nowIso(), status: "failed", error: message });
