@@ -309,6 +309,7 @@ test("keeps provider API keys out of the streamed Daytona command string", async
     expect(command).not.toContain("secret-openai-key");
     const envUpload = fake.sandbox.uploads.find((upload) => upload.remotePath === "/run/runtime-env.sh");
     expect(envUpload?.content).toContain("OPENAI_API_KEY='secret-openai-key'");
+    expect(fake.sandbox.commands.map((entry) => entry.command)).toContain("chmod 600 '/run/runtime-env.sh'");
   } finally {
     if (previousOpenAiKey === undefined) {
       delete process.env.OPENAI_API_KEY;

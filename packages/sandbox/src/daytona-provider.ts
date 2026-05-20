@@ -623,6 +623,7 @@ export class DaytonaSandboxProvider implements SandboxProvider {
     }
     await sandbox.fs.uploadFile(Buffer.from(JSON.stringify(withRemoteRuntimePaths(payload), null, 2), "utf8"), REMOTE_WAKE);
     await sandbox.fs.uploadFile(Buffer.from(runtimeCommandEnvSource(), "utf8"), REMOTE_RUNTIME_ENV);
+    await sandbox.process.executeCommand(`chmod 600 ${shellQuote(REMOTE_RUNTIME_ENV)}`, undefined, undefined, this.commandTimeoutSec);
 
     await this.uploadSharedBundle(sandbox, localSharedPath);
     await this.ensurePersistentFile(sandbox, path.posix.join(REMOTE_AGENT_HOME, "IDENTITY.md"), "# Agent Identity\n\nYou are the default PoC workspace agent.\n");
