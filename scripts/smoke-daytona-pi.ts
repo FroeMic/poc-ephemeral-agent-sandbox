@@ -124,6 +124,12 @@ function envInt(name: string, fallback: number) {
   return parsed;
 }
 
+function runFailureDetails(store: JsonStore, runId: string) {
+  const events = store.listRunEvents(runId);
+  const recentEvents = events.slice(-20);
+  return JSON.stringify({ runId, recentEvents }, null, 2);
+}
+
 async function main() {
   await loadDotEnvFiles();
   const preflight = getSmokePreflightStatus();
@@ -193,7 +199,9 @@ async function main() {
       message: "Smoke test 1: create a short durable note and finish.",
     });
     const firstRun = await service.waitForRun(first.runId);
-    if (firstRun.status !== "succeeded") throw new Error(`First run failed: ${firstRun.error ?? firstRun.status}`);
+    if (firstRun.status !== "succeeded") {
+      throw new Error(`First run failed: ${firstRun.error ?? firstRun.status}\n${runFailureDetails(store, first.runId)}`);
+    }
 
     const second = await service.wake({
       source: "api",
@@ -202,7 +210,9 @@ async function main() {
       message: "Smoke test 2: read the existing workspace state, create another short durable note, and finish.",
     });
     const secondRun = await service.waitForRun(second.runId);
-    if (secondRun.status !== "succeeded") throw new Error(`Second run failed: ${secondRun.error ?? secondRun.status}`);
+    if (secondRun.status !== "succeeded") {
+      throw new Error(`Second run failed: ${secondRun.error ?? secondRun.status}\n${runFailureDetails(store, second.runId)}`);
+    }
 
     const inspectHandle = (await provider.startRun({
       runId: `inspect-${Date.now()}`,
