@@ -450,12 +450,16 @@ export class DaytonaSandboxProvider implements SandboxProvider {
 
     await this.prepareRemoteRuntime(handle.sandbox, input.payload, handle.localSharedPath);
     if (this.agentRuntime.mode === "pi") {
-      await handle.sandbox.process.executeCommand(
+      const installResult = await handle.sandbox.process.executeCommand(
         "npm install --omit=dev",
         REMOTE_HARNESS,
         runtimeCommandEnv(),
         this.commandTimeoutSec,
       );
+      if (installResult.exitCode !== 0) {
+        const output = installResult.artifacts?.stdout ?? installResult.result ?? "";
+        throw new Error(`Pi dependency install failed with code ${installResult.exitCode}: ${output}`);
+      }
     }
 
     const result = await handle.sandbox.process.executeCommand(
