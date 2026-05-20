@@ -1,6 +1,7 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { createRunService } from "../apps/control-plane/src/services/run-service.js";
 import { JsonStore } from "../apps/control-plane/src/db/store.js";
 import { DaytonaSandboxProvider } from "../packages/sandbox/src/daytona-provider.js";
@@ -18,6 +19,38 @@ type InspectableHandle = Awaited<ReturnType<DaytonaSandboxProvider["startRun"]>>
     };
   };
 };
+
+function parseDotEnvValue(raw: string) {
+  const trimmed = raw.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+export async function loadDotEnvFile(filePath = path.resolve(process.cwd(), ".env")) {
+  let content: string;
+  try {
+    content = await readFile(filePath, "utf8");
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return;
+    throw error;
+  }
+
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const separator = trimmed.indexOf("=");
+    if (separator === -1) continue;
+    const key = trimmed.slice(0, separator).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+    if (process.env[key] !== undefined) continue;
+    process.env[key] = parseDotEnvValue(trimmed.slice(separator + 1));
+  }
+}
 
 function requiredEnv(name: string) {
   const value = process.env[name]?.trim();
@@ -39,6 +72,7 @@ function requireModelCredentials(model: string) {
 }
 
 async function main() {
+  await loadDotEnvFile();
   requiredEnv("DAYTONA_API_KEY");
   const model = process.env.PI_MODEL?.trim() || "openai/gpt-5.5";
   requireModelCredentials(model);
@@ -138,4 +172,6 @@ async function main() {
   }
 }
 
-await main();
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  await main();
+}
