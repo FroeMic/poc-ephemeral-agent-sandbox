@@ -481,6 +481,8 @@ test("uploads the Pi runtime bundle when agent runtime mode is pi", async () => 
   expect(runner?.content).toContain("await copyTree(workspaceSessionDir, scratchSessionDir)");
   expect(runner?.content).toContain("await copyTree(scratchSessionDir, workspaceSessionDir)");
   expect(runner?.content).toContain("async function copyTree");
+  expect(runner?.content).toContain("async function appendDurableText");
+  expect(runner?.content).toContain('error.code !== "EPERM"');
   expect(runner?.content).toContain("await writeFile(destinationPath, await readFile(sourcePath))");
   expect(runner?.content).not.toContain(" cp(");
   expect(runner?.content).toContain("openai/gpt-5.5");

@@ -251,7 +251,7 @@ emit({ type: "run_finished", runId: run.id, timestamp: nowIso(), status: "succee
 }
 
 function remotePiRuntimeSource(config: AgentRuntimeConfig) {
-  return String.raw`import { appendFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+  return String.raw`import { appendFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { AuthStorage, createAgentSession, ModelRegistry, SessionManager } from "@earendil-works/pi-coding-agent";
 
@@ -314,6 +314,17 @@ async function copyTree(sourceDir, destinationDir) {
       await mkdir(path.dirname(destinationPath), { recursive: true });
       await writeFile(destinationPath, await readFile(sourcePath));
     }
+  }
+}
+
+async function appendDurableText(filePath, text) {
+  try {
+    await appendFile(filePath, text, "utf8");
+  } catch (error) {
+    if (!error || (error.code !== "EPERM" && error.code !== "EACCES")) throw error;
+    const current = await readOptional(filePath);
+    await rm(filePath, { force: true });
+    await writeFile(filePath, current + text, "utf8");
   }
 }
 
@@ -416,7 +427,7 @@ await writeFile(notePath, [
 emit({ type: "file_changed", runId: run.id, timestamp: nowIso(), path: notePath });
 emit({ type: "artifact_created", runId: run.id, timestamp: nowIso(), path: notePath });
 
-await appendFile(path.join(agentHomePath, "MEMORY.md"), "\n## " + nowIso() + " " + run.id + "\n\nHandled wake with Pi: " + wakeEvent.message + "\n", "utf8");
+await appendDurableText(path.join(agentHomePath, "MEMORY.md"), "\n## " + nowIso() + " " + run.id + "\n\nHandled wake with Pi: " + wakeEvent.message + "\n");
 emit({ type: "file_changed", runId: run.id, timestamp: nowIso(), path: path.join(agentHomePath, "MEMORY.md") });
 
 if (run.taskId) {
