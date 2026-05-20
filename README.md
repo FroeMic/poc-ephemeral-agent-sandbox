@@ -56,6 +56,27 @@ Then use the browser dashboard or:
 CONTROL_PLANE_URL=http://localhost:3777 pnpm wake:demo
 ```
 
+## Agent Runtime Modes
+
+The control plane supports two runtime modes:
+
+```bash
+export AGENT_RUNTIME_MODE=mock
+```
+
+`mock` is the deterministic default. It proves the wake/run/event/filesystem lifecycle without calling an LLM.
+
+```bash
+export AGENT_RUNTIME_MODE=pi
+export PI_MODEL=openai/gpt-5.5
+export PI_THINKING_LEVEL=medium
+export OPENAI_API_KEY=...
+```
+
+`pi` uploads a Pi coding-agent runner into the Daytona sandbox, installs `@earendil-works/pi-coding-agent` in `/agentruntime/harness`, runs Pi with cwd `/workspace`, stores Pi auth/session files under `/agent-home/pi`, and passes provider API keys such as `OPENAI_API_KEY` into the sandbox command.
+
+For faster startup, use `DAYTONA_IMAGE` or `DAYTONA_SNAPSHOT` with Node and Pi dependencies preinstalled. Without a prebuilt image, the PoC installs Pi dependencies inside each ephemeral sandbox run.
+
 ## Disk Model
 
 Inside the runtime:
