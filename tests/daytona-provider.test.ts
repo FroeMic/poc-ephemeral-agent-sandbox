@@ -219,6 +219,8 @@ test("uploads the Pi runtime bundle when agent runtime mode is pi", async () => 
   expect(runner?.content).toContain("/agent-home/pi");
   expect(runner?.content).toContain("openai/gpt-5.5");
   expect(runner?.content).toContain("high");
+  expect(runner?.content).toContain('source: "rpc"');
+  expect(runner?.content).not.toContain('source: "api"');
 });
 
 test("prepares Pi dependencies and passes provider API keys to the Daytona command", async () => {

@@ -280,7 +280,7 @@ const prompt = [
   wakeEvent.message,
 ].join("\n");
 
-await session.prompt(prompt, { source: "api" });
+await session.prompt(prompt, { source: "rpc" });
 const lastAssistant = [...session.messages].reverse().find((message) => message.role === "assistant");
 const responseText = lastAssistant ? messageContentToText(lastAssistant.content) : "Pi completed without an assistant text response.";
 
