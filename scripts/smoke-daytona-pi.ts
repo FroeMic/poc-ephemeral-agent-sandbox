@@ -57,18 +57,36 @@ export async function loadDotEnvFiles(dir = process.cwd()) {
   await loadDotEnvFile(path.resolve(dir, ".env"));
 }
 
-function requiredEnv(name: string) {
-  const value = process.env[name]?.trim();
-  if (!value) throw new Error(`${name} is required`);
-  return value;
-}
-
 export function assertDaytonaCredentials() {
   const apiKey = process.env.DAYTONA_API_KEY?.trim();
   const jwtToken = process.env.DAYTONA_JWT_TOKEN?.trim();
   const organizationId = process.env.DAYTONA_ORGANIZATION_ID?.trim();
   if (apiKey || (jwtToken && organizationId)) return;
   throw new Error("DAYTONA_API_KEY or DAYTONA_JWT_TOKEN plus DAYTONA_ORGANIZATION_ID is required");
+}
+
+export function getSmokePreflightStatus() {
+  const model = process.env.PI_MODEL?.trim() || "openai/gpt-5.5";
+  const apiKey = process.env.DAYTONA_API_KEY?.trim();
+  const jwtToken = process.env.DAYTONA_JWT_TOKEN?.trim();
+  const organizationId = process.env.DAYTONA_ORGANIZATION_ID?.trim();
+  const missing: string[] = [];
+
+  if (!apiKey && !(jwtToken && organizationId)) {
+    missing.push("DAYTONA_API_KEY or DAYTONA_JWT_TOKEN plus DAYTONA_ORGANIZATION_ID");
+  }
+  if (model.startsWith("openai/") && !process.env.OPENAI_API_KEY?.trim()) {
+    missing.push("OPENAI_API_KEY");
+  }
+  if (model.startsWith("anthropic/") && !process.env.ANTHROPIC_API_KEY?.trim()) {
+    missing.push("ANTHROPIC_API_KEY");
+  }
+
+  return {
+    ok: missing.length === 0,
+    model,
+    missing,
+  };
 }
 
 function envInt(name: string, fallback: number) {
@@ -79,16 +97,13 @@ function envInt(name: string, fallback: number) {
   return parsed;
 }
 
-function requireModelCredentials(model: string) {
-  if (model.startsWith("openai/")) requiredEnv("OPENAI_API_KEY");
-  if (model.startsWith("anthropic/")) requiredEnv("ANTHROPIC_API_KEY");
-}
-
 async function main() {
   await loadDotEnvFiles();
-  assertDaytonaCredentials();
-  const model = process.env.PI_MODEL?.trim() || "openai/gpt-5.5";
-  requireModelCredentials(model);
+  const preflight = getSmokePreflightStatus();
+  if (!preflight.ok) {
+    throw new Error(`Daytona/Pi smoke preflight failed. Missing: ${preflight.missing.join(", ")}`);
+  }
+  const model = preflight.model;
 
   const agentId = process.env.SMOKE_AGENT_ID?.trim() || "agent-smoke-pi";
   const workspaceId = process.env.SMOKE_WORKSPACE_ID?.trim() || `workspace-smoke-pi-${Date.now()}`;

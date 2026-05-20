@@ -2,7 +2,12 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, test } from "vitest";
-import { assertDaytonaCredentials, loadDotEnvFile, loadDotEnvFiles } from "../scripts/smoke-daytona-pi.js";
+import {
+  assertDaytonaCredentials,
+  getSmokePreflightStatus,
+  loadDotEnvFile,
+  loadDotEnvFiles,
+} from "../scripts/smoke-daytona-pi.js";
 
 const tempDirs: string[] = [];
 const originalEnv = { ...process.env };
@@ -90,4 +95,22 @@ test("requires either Daytona API key or JWT plus organization credentials", () 
   delete process.env.DAYTONA_ORGANIZATION_ID;
 
   expect(() => assertDaytonaCredentials()).toThrow("DAYTONA_API_KEY or DAYTONA_JWT_TOKEN plus DAYTONA_ORGANIZATION_ID is required");
+});
+
+test("reports missing Daytona and model credentials before live smoke", () => {
+  delete process.env.DAYTONA_API_KEY;
+  delete process.env.DAYTONA_JWT_TOKEN;
+  delete process.env.DAYTONA_ORGANIZATION_ID;
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  process.env.PI_MODEL = "openai/gpt-5.5";
+
+  expect(getSmokePreflightStatus()).toEqual({
+    ok: false,
+    model: "openai/gpt-5.5",
+    missing: [
+      "DAYTONA_API_KEY or DAYTONA_JWT_TOKEN plus DAYTONA_ORGANIZATION_ID",
+      "OPENAI_API_KEY",
+    ],
+  });
 });
