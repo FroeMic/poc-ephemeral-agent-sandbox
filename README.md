@@ -78,6 +78,16 @@ export OPENAI_API_KEY=...
 
 For faster startup, use `DAYTONA_IMAGE` or `DAYTONA_SNAPSHOT` with Node and Pi dependencies preinstalled. Without a prebuilt image, the PoC installs Pi dependencies inside each ephemeral sandbox run.
 
+Run the real Daytona/Pi persistence smoke test:
+
+```bash
+export DAYTONA_API_KEY=...
+export OPENAI_API_KEY=...
+SANDBOX_PROVIDER=daytona AGENT_RUNTIME_MODE=pi pnpm smoke:daytona:pi
+```
+
+The smoke test performs two separate Pi-backed Daytona wakes for the same `agentId` and `workspaceId`, stops each ephemeral sandbox, then starts an inspection sandbox with the same persistent volume subpaths mounted. It verifies that both run notes exist under `/workspace/notes`, both run IDs were appended to `/agent-home/MEMORY.md`, and Pi session storage exists under `/agent-home/pi/sessions`.
+
 ## Disk Model
 
 Inside the runtime:

@@ -8,7 +8,8 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "wake:demo": "node --import tsx scripts/wake-demo.ts",
-    "seed:demo": "node --import tsx scripts/seed-demo.ts"
+    "seed:demo": "node --import tsx scripts/seed-demo.ts",
+    "smoke:daytona:pi": "node --import tsx scripts/smoke-daytona-pi.ts"
   },
   "dependencies": {
     "zod": "^3.25.76"
