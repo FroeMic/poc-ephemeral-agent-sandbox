@@ -1,7 +1,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { Daytona, type DaytonaConfig } from "@daytonaio/sdk";
-import { nowIso, type RunEvent, type RuntimeWakePayload } from "@poc/shared";
+import { idSegmentSchema, nowIso, type RunEvent, type RuntimeWakePayload } from "@poc/shared";
 import type { AgentRuntimeConfig, ExecInput, SandboxHandle, SandboxProvider, StartRunInput } from "./types.js";
 
 export type DaytonaVolumeLike = {
@@ -486,6 +486,11 @@ function withRemoteRuntimePaths(payload: RuntimeWakePayload): RuntimeWakePayload
   };
 }
 
+function assertSafeDaytonaId(kind: "agentId" | "workspaceId", value: string) {
+  const parsed = idSegmentSchema.safeParse(value);
+  if (!parsed.success) throw new Error(`Invalid Daytona ${kind}: must be a safe path segment`);
+}
+
 export class DaytonaSandboxProvider implements SandboxProvider {
   readonly name = "daytona" as const;
   private readonly client: DaytonaClientLike;
@@ -528,6 +533,9 @@ export class DaytonaSandboxProvider implements SandboxProvider {
   }
 
   async startRun(input: StartRunInput): Promise<DaytonaHandle> {
+    assertSafeDaytonaId("agentId", input.agentId);
+    assertSafeDaytonaId("workspaceId", input.workspaceId);
+
     const volume = await this.client.volume.get(this.volumeName, true);
     const sandbox = await this.client.create(
       {

@@ -188,6 +188,42 @@ test("creates a Daytona sandbox with persistent agent and workspace volume subpa
   ]);
 });
 
+test("rejects unsafe agent and workspace ids before creating Daytona volume subpaths", async () => {
+  const fake = new FakeDaytona();
+  const provider = new DaytonaSandboxProvider({
+    client: fake,
+    volumeName: "poc-volume",
+  });
+
+  await expect(
+    provider.startRun({
+      runId: "run-1",
+      agentId: "../agent-main",
+      workspaceId: "workspace-demo",
+      agentHomePath: "/tmp/local-agent",
+      workspacePath: "/tmp/local-workspace",
+      sharedPath: "/tmp/local-shared",
+      runPath: "/tmp/local-run",
+      wakePath: "/tmp/local-run/wake.json",
+    }),
+  ).rejects.toThrow("Invalid Daytona agentId");
+
+  await expect(
+    provider.startRun({
+      runId: "run-1",
+      agentId: "agent-main",
+      workspaceId: "tenant/workspace-demo",
+      agentHomePath: "/tmp/local-agent",
+      workspacePath: "/tmp/local-workspace",
+      sharedPath: "/tmp/local-shared",
+      runPath: "/tmp/local-run",
+      wakePath: "/tmp/local-run/wake.json",
+    }),
+  ).rejects.toThrow("Invalid Daytona workspaceId");
+
+  expect(fake.createParams).toEqual([]);
+});
+
 test("uploads runtime files and parses JSONL events from Daytona command output", async () => {
   const root = await makeTempDir();
   const sharedPath = path.join(root, "shared");
