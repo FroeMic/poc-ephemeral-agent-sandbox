@@ -27,7 +27,16 @@ CONTROL_PLANE_URL=http://localhost:3777 pnpm wake:demo
 
 The Daytona provider creates an ephemeral Daytona sandbox, mounts one persistent Daytona volume at separate subpaths for `/agent-home` and `/workspace`, uploads the shared runtime bundle and harness, executes the runtime, follows Daytona session logs to stream JSONL events back to the control plane when the SDK supports it, and deletes the sandbox. It keeps a buffered `executeCommand` fallback for older/fake providers.
 
-Required auth is either `DAYTONA_API_KEY` or both `DAYTONA_JWT_TOKEN` and `DAYTONA_ORGANIZATION_ID`:
+Required auth is either `DAYTONA_API_KEY` or both `DAYTONA_JWT_TOKEN` and `DAYTONA_ORGANIZATION_ID`.
+For API-key auth, no organization id is needed in this PoC path; the key itself must have enough Daytona scopes.
+The persistence smoke needs at least sandbox create/delete access plus volume read/write access:
+
+```text
+write:sandboxes
+delete:sandboxes
+read:volumes
+write:volumes
+```
 
 ```bash
 export DAYTONA_API_KEY=...
