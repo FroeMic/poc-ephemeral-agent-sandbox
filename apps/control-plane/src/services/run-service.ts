@@ -88,16 +88,25 @@ export function createRunService(input: {
       },
     });
 
-    const handle = await input.provider.startRun({
-      runId: run.id,
-      agentId: run.agentId,
-      workspaceId: run.workspaceId,
-      agentHomePath: fs.agentHomePath,
-      workspacePath: fs.workspacePath,
-      sharedPath: fs.sharedPath,
-      runPath: fs.runPath,
-      wakePath: fs.wakePath,
-    });
+    let handle;
+    try {
+      handle = await input.provider.startRun({
+        runId: run.id,
+        agentId: run.agentId,
+        workspaceId: run.workspaceId,
+        agentHomePath: fs.agentHomePath,
+        workspacePath: fs.workspacePath,
+        sharedPath: fs.sharedPath,
+        runPath: fs.runPath,
+        wakePath: fs.wakePath,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await recordEvent({ type: "run_finished", runId: run.id, timestamp: nowIso(), status: "failed", error: message });
+      currentRun = { ...currentRun, status: "failed", finishedAt: nowIso(), error: message };
+      await input.store.updateRun(currentRun);
+      return currentRun;
+    }
     await recordEvent({
       type: "sandbox_started",
       runId: run.id,

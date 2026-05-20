@@ -39,6 +39,23 @@ class FailingSandboxProvider implements SandboxProvider {
   }
 }
 
+class FailingStartSandboxProvider implements SandboxProvider {
+  readonly name = "daytona" as const;
+  stopped: SandboxHandle[] = [];
+
+  async startRun(_input: StartRunInput): Promise<SandboxHandle> {
+    throw new Error("sandbox create exploded");
+  }
+
+  async *exec(_input: ExecInput) {
+    throw new Error("should not execute");
+  }
+
+  async stop(handle: SandboxHandle): Promise<void> {
+    this.stopped.push(handle);
+  }
+}
+
 test("runs the local sandbox lifecycle and preserves workspace state across runs", async () => {
   const dataDir = await makeTempDir();
   const store = await JsonStore.create(path.join(dataDir, "store.json"));
@@ -112,5 +129,36 @@ test("stops the sandbox and records failure events when runtime execution fails"
   ]);
   expect(store.listRunEvents(wake.runId).map((event) => event.type)).toEqual(
     expect.arrayContaining(["sandbox_started", "run_finished", "sandbox_stopped"]),
+  );
+});
+
+test("records a failed run when sandbox startup fails before a handle exists", async () => {
+  const dataDir = await makeTempDir();
+  const store = await JsonStore.create(path.join(dataDir, "store.json"));
+  const provider = new FailingStartSandboxProvider();
+  const service = createRunService({
+    repoRoot: process.cwd(),
+    dataDir,
+    controlPlaneUrl: "http://127.0.0.1:3000",
+    sharedBundleVersion: "v1",
+    provider,
+    store,
+  });
+
+  const wake = await service.wake({
+    source: "api",
+    agentId: "agent-main",
+    workspaceId: "workspace-demo",
+    message: "This sandbox should fail to start",
+  });
+  const completed = await service.waitForRun(wake.runId);
+
+  expect(completed.status).toBe("failed");
+  expect(completed.error).toBe("sandbox create exploded");
+  expect(provider.stopped).toEqual([]);
+  expect(store.listRunEvents(wake.runId)).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ type: "run_finished", status: "failed", error: "sandbox create exploded" }),
+    ]),
   );
 });
