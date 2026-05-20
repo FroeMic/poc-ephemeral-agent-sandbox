@@ -46,6 +46,7 @@ export DAYTONA_ORGANIZATION_ID=...
 export SANDBOX_PROVIDER=daytona
 export DAYTONA_VOLUME_NAME=poc-ephemeral-agent-sandbox
 export DAYTONA_IMAGE=node:22-bookworm
+export DAYTONA_TARGET=eu
 ```
 
 Optional:
