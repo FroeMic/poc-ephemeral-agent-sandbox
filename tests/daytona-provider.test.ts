@@ -230,6 +230,29 @@ test("uploads runtime files and parses JSONL events from Daytona command output"
   expect(events.map((event) => event.type)).toEqual(["runtime_started", "run_finished"]);
 });
 
+test("removes the ephemeral runtime env file before deleting the Daytona sandbox", async () => {
+  const fake = new FakeDaytona();
+  const provider = new DaytonaSandboxProvider({
+    client: fake,
+    volumeName: "poc-volume",
+  });
+  const handle = await provider.startRun({
+    runId: "run-1",
+    agentId: "agent-main",
+    workspaceId: "workspace-demo",
+    agentHomePath: "/tmp/local-agent",
+    workspacePath: "/tmp/local-workspace",
+    sharedPath: "/tmp/local-shared",
+    runPath: "/tmp/local-run",
+    wakePath: "/tmp/local-run/wake.json",
+  });
+
+  await provider.stop(handle);
+
+  expect(fake.sandbox.commands.map((entry) => entry.command)).toContain("rm -f '/run/runtime-env.sh'");
+  expect(fake.sandbox.deleted).toBe(true);
+});
+
 test("streams JSONL events from Daytona followed session logs when available", async () => {
   const root = await makeTempDir();
   const sharedPath = path.join(root, "shared");

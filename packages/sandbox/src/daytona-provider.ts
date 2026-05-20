@@ -594,6 +594,16 @@ export class DaytonaSandboxProvider implements SandboxProvider {
   async stop(handle: SandboxHandle): Promise<void> {
     const daytonaHandle = handle as DaytonaHandle;
     if (daytonaHandle.sandbox) {
+      try {
+        await daytonaHandle.sandbox.process.executeCommand(
+          `rm -f ${shellQuote(REMOTE_RUNTIME_ENV)}`,
+          undefined,
+          undefined,
+          this.commandTimeoutSec,
+        );
+      } catch {
+        // Sandbox deletion is the authoritative cleanup path.
+      }
       await daytonaHandle.sandbox.delete(this.deleteTimeoutSec);
     }
   }
