@@ -99,6 +99,7 @@ class FakeDaytona implements DaytonaClientLike {
   sandbox = new FakeSandbox();
   volumeGetCalls: Array<{ name: string; create: boolean }> = [];
   createParams: unknown[] = [];
+  createFailures: Error[] = [];
 
   volume = {
     get: async (name: string, create: boolean) => {
@@ -109,6 +110,8 @@ class FakeDaytona implements DaytonaClientLike {
 
   async create(params: unknown) {
     this.createParams.push(params);
+    const failure = this.createFailures.shift();
+    if (failure) throw failure;
     return this.sandbox;
   }
 }
@@ -186,6 +189,33 @@ test("creates a Daytona sandbox with persistent agent and workspace volume subpa
       ],
     }),
   ]);
+});
+
+test("retries sandbox creation while Daytona volume is pending creation", async () => {
+  const fake = new FakeDaytona();
+  fake.createFailures.push(
+    new Error("Volume 'poc-volume' is not in a ready state. Current state: pending_create"),
+  );
+  const provider = new DaytonaSandboxProvider({
+    client: fake,
+    volumeName: "poc-volume",
+    image: "node:22-bookworm",
+    volumeReadyPollMs: 1,
+  });
+
+  const handle = await provider.startRun({
+    runId: "run-1",
+    agentId: "agent-main",
+    workspaceId: "workspace-demo",
+    agentHomePath: "/tmp/local-agent",
+    workspacePath: "/tmp/local-workspace",
+    sharedPath: "/tmp/local-shared",
+    runPath: "/tmp/local-run",
+    wakePath: "/tmp/local-run/wake.json",
+  });
+
+  expect(handle.sandboxId).toBe("sandbox-123");
+  expect(fake.createParams).toHaveLength(2);
 });
 
 test("rejects unsafe agent and workspace ids before creating Daytona volume subpaths", async () => {

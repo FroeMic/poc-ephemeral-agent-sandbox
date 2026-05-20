@@ -59,6 +59,7 @@ export type DaytonaSandboxProviderOptions = {
   createTimeoutSec?: number;
   commandTimeoutSec?: number;
   deleteTimeoutSec?: number;
+  volumeReadyPollMs?: number;
   agentRuntime?: AgentRuntimeConfig;
 };
 
@@ -76,6 +77,7 @@ const REMOTE_WAKE = "/run/wake.json";
 const REMOTE_RUNTIME_ENV = "/run/runtime-env.sh";
 const DEFAULT_VOLUME_NAME = "poc-ephemeral-agent-sandbox";
 const DEFAULT_IMAGE = "node:22-bookworm";
+const DEFAULT_VOLUME_READY_POLL_MS = 2_000;
 const DEFAULT_AGENT_RUNTIME: AgentRuntimeConfig = {
   mode: "mock",
   pi: {
@@ -86,6 +88,15 @@ const DEFAULT_AGENT_RUNTIME: AgentRuntimeConfig = {
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isPendingVolumeCreateError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /volume .*not in a ready state/i.test(message) && /pending_create/i.test(message);
 }
 
 function createDaytonaClient(options: DaytonaSandboxProviderOptions): DaytonaClientLike {
@@ -500,6 +511,7 @@ export class DaytonaSandboxProvider implements SandboxProvider {
   private readonly createTimeoutSec: number;
   private readonly commandTimeoutSec: number;
   private readonly deleteTimeoutSec: number;
+  private readonly volumeReadyPollMs: number;
   private readonly agentRuntime: AgentRuntimeConfig;
   private readonly clientConfig: Pick<
     DaytonaSandboxProviderOptions,
@@ -521,6 +533,7 @@ export class DaytonaSandboxProvider implements SandboxProvider {
     this.createTimeoutSec = options.createTimeoutSec ?? 120;
     this.commandTimeoutSec = options.commandTimeoutSec ?? 120;
     this.deleteTimeoutSec = options.deleteTimeoutSec ?? 60;
+    this.volumeReadyPollMs = options.volumeReadyPollMs ?? DEFAULT_VOLUME_READY_POLL_MS;
     this.agentRuntime = options.agentRuntime ?? DEFAULT_AGENT_RUNTIME;
   }
 
@@ -537,25 +550,23 @@ export class DaytonaSandboxProvider implements SandboxProvider {
     assertSafeDaytonaId("workspaceId", input.workspaceId);
 
     const volume = await this.client.volume.get(this.volumeName, true);
-    const sandbox = await this.client.create(
-      {
-        name: `poc-${input.runId}`.slice(0, 63),
-        ephemeral: true,
-        autoStopInterval: 15,
-        autoArchiveInterval: 0,
-        autoDeleteInterval: 0,
-        labels: {
-          app: "poc-ephemeral-agent-sandbox",
-          runId: input.runId,
-        },
-        ...(this.snapshot ? { snapshot: this.snapshot } : { image: this.image }),
-        volumes: [
-          { volumeId: volume.id, mountPath: REMOTE_AGENT_HOME, subpath: `agents/${input.agentId}` },
-          { volumeId: volume.id, mountPath: REMOTE_WORKSPACE, subpath: `workspaces/${input.workspaceId}` },
-        ],
+    const createParams = {
+      name: `poc-${input.runId}`.slice(0, 63),
+      ephemeral: true,
+      autoStopInterval: 15,
+      autoArchiveInterval: 0,
+      autoDeleteInterval: 0,
+      labels: {
+        app: "poc-ephemeral-agent-sandbox",
+        runId: input.runId,
       },
-      { timeout: this.createTimeoutSec },
-    );
+      ...(this.snapshot ? { snapshot: this.snapshot } : { image: this.image }),
+      volumes: [
+        { volumeId: volume.id, mountPath: REMOTE_AGENT_HOME, subpath: `agents/${input.agentId}` },
+        { volumeId: volume.id, mountPath: REMOTE_WORKSPACE, subpath: `workspaces/${input.workspaceId}` },
+      ],
+    };
+    const sandbox = await this.createSandboxWhenVolumeReady(createParams);
 
     return {
       provider: this.name,
@@ -570,6 +581,20 @@ export class DaytonaSandboxProvider implements SandboxProvider {
         wakePath: REMOTE_WAKE,
       },
     };
+  }
+
+  private async createSandboxWhenVolumeReady(params: unknown) {
+    const deadline = Date.now() + this.createTimeoutSec * 1_000;
+    for (;;) {
+      try {
+        return await this.client.create(params, { timeout: this.createTimeoutSec });
+      } catch (error) {
+        if (!isPendingVolumeCreateError(error) || Date.now() + this.volumeReadyPollMs > deadline) {
+          throw error;
+        }
+        await sleep(this.volumeReadyPollMs);
+      }
+    }
   }
 
   async *exec(input: ExecInput): AsyncIterable<RunEvent> {
