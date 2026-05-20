@@ -89,6 +89,17 @@ export function getSmokePreflightStatus() {
   };
 }
 
+type SmokePreflightStatus = ReturnType<typeof getSmokePreflightStatus>;
+
+export function formatSmokePreflightFailure(preflight: SmokePreflightStatus) {
+  return [
+    "Daytona/Pi smoke preflight failed.",
+    `Model: ${preflight.model}`,
+    "Missing:",
+    ...preflight.missing.map((item) => `- ${item}`),
+  ].join("\n");
+}
+
 function envInt(name: string, fallback: number) {
   const raw = process.env[name]?.trim();
   if (!raw) return fallback;
@@ -101,7 +112,9 @@ async function main() {
   await loadDotEnvFiles();
   const preflight = getSmokePreflightStatus();
   if (!preflight.ok) {
-    throw new Error(`Daytona/Pi smoke preflight failed. Missing: ${preflight.missing.join(", ")}`);
+    process.stderr.write(`${formatSmokePreflightFailure(preflight)}\n`);
+    process.exitCode = 1;
+    return;
   }
   const model = preflight.model;
 

@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, expect, test } from "vitest";
 import {
   assertDaytonaCredentials,
+  formatSmokePreflightFailure,
   getSmokePreflightStatus,
   loadDotEnvFile,
   loadDotEnvFiles,
@@ -113,4 +114,25 @@ test("reports missing Daytona and model credentials before live smoke", () => {
       "OPENAI_API_KEY",
     ],
   });
+});
+
+test("formats smoke preflight failure without a stack trace", () => {
+  expect(
+    formatSmokePreflightFailure({
+      ok: false,
+      model: "openai/gpt-5.5",
+      missing: [
+        "DAYTONA_API_KEY or DAYTONA_JWT_TOKEN plus DAYTONA_ORGANIZATION_ID",
+        "OPENAI_API_KEY",
+      ],
+    }),
+  ).toBe(
+    [
+      "Daytona/Pi smoke preflight failed.",
+      "Model: openai/gpt-5.5",
+      "Missing:",
+      "- DAYTONA_API_KEY or DAYTONA_JWT_TOKEN plus DAYTONA_ORGANIZATION_ID",
+      "- OPENAI_API_KEY",
+    ].join("\n"),
+  );
 });
