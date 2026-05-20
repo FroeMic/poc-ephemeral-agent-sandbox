@@ -73,6 +73,7 @@ const REMOTE_SHARED = "/agentruntime/shared";
 const REMOTE_HARNESS = "/agentruntime/harness";
 const REMOTE_RUN = "/run";
 const REMOTE_WAKE = "/run/wake.json";
+const REMOTE_RUNTIME_ENV = "/run/runtime-env.sh";
 const DEFAULT_VOLUME_NAME = "poc-ephemeral-agent-sandbox";
 const DEFAULT_IMAGE = "node:22-bookworm";
 const DEFAULT_AGENT_RUNTIME: AgentRuntimeConfig = {
@@ -443,11 +444,14 @@ function supportsSessionStreaming(process: DaytonaSandboxLike["process"]) {
   );
 }
 
-function withShellCwdAndEnv(command: string, cwd: string, env: Record<string, string>) {
-  const assignments = Object.entries(env)
-    .map(([key, value]) => `${key}=${shellQuote(value)}`)
-    .join(" ");
-  return `cd ${shellQuote(cwd)} && ${assignments ? `${assignments} ` : ""}${command}`;
+function runtimeCommandEnvSource() {
+  return `${Object.entries(runtimeCommandEnv())
+    .map(([key, value]) => `export ${key}=${shellQuote(value)}`)
+    .join("\n")}\n`;
+}
+
+function withShellCwdAndEnvFile(command: string, cwd: string) {
+  return `cd ${shellQuote(cwd)} && . ${shellQuote(REMOTE_RUNTIME_ENV)} && ${command}`;
 }
 
 async function listFilesRecursive(root: string): Promise<Array<{ localPath: string; relativePath: string }>> {
@@ -618,6 +622,7 @@ export class DaytonaSandboxProvider implements SandboxProvider {
       await sandbox.fs.uploadFile(Buffer.from(remotePiPackageJson(), "utf8"), path.posix.join(REMOTE_HARNESS, "package.json"));
     }
     await sandbox.fs.uploadFile(Buffer.from(JSON.stringify(withRemoteRuntimePaths(payload), null, 2), "utf8"), REMOTE_WAKE);
+    await sandbox.fs.uploadFile(Buffer.from(runtimeCommandEnvSource(), "utf8"), REMOTE_RUNTIME_ENV);
 
     await this.uploadSharedBundle(sandbox, localSharedPath);
     await this.ensurePersistentFile(sandbox, path.posix.join(REMOTE_AGENT_HOME, "IDENTITY.md"), "# Agent Identity\n\nYou are the default PoC workspace agent.\n");
@@ -653,7 +658,7 @@ export class DaytonaSandboxProvider implements SandboxProvider {
       const response = await sandbox.process.executeSessionCommand?.(
         sessionId,
         {
-          command: withShellCwdAndEnv(command, REMOTE_WORKSPACE, runtimeCommandEnv()),
+          command: withShellCwdAndEnvFile(command, REMOTE_WORKSPACE),
           runAsync: true,
           suppressInputEcho: true,
         },

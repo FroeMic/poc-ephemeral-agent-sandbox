@@ -266,11 +266,56 @@ test("streams JSONL events from Daytona followed session logs when available", a
     }),
   );
   expect(fake.sandbox.sessionExecCalls[0]?.req.command).toContain("cd '/workspace' &&");
-  expect(fake.sandbox.sessionExecCalls[0]?.req.command).toContain("PI_CODING_AGENT_DIR='/agent-home/pi'");
+  expect(fake.sandbox.sessionExecCalls[0]?.req.command).toContain(". '/run/runtime-env.sh'");
   expect(fake.sandbox.sessionExecCalls[0]?.req.command).toContain("node '/agentruntime/harness/run.mjs' '/run/wake.json'");
+  const envUpload = fake.sandbox.uploads.find((upload) => upload.remotePath === "/run/runtime-env.sh");
+  expect(envUpload?.content).toContain("PI_CODING_AGENT_DIR='/agent-home/pi'");
   expect(fake.sandbox.sessionLogCalls).toEqual([{ sessionId: "run-run-1", commandId: "cmd-1" }]);
   expect(fake.sandbox.sessionDeleteCalls).toEqual(["run-run-1"]);
   expect(events.map((event) => event.type)).toEqual(["runtime_started", "run_finished", "stderr"]);
+});
+
+test("keeps provider API keys out of the streamed Daytona command string", async () => {
+  const root = await makeTempDir();
+  const sharedPath = path.join(root, "shared");
+  await mkdir(sharedPath, { recursive: true });
+  await writeFile(path.join(sharedPath, "manifest.json"), '{"version":"v1"}\n', "utf8");
+
+  const previousOpenAiKey = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "secret-openai-key";
+  try {
+    const fake = new StreamingFakeDaytona();
+    const provider = new DaytonaSandboxProvider({
+      client: fake,
+      volumeName: "poc-volume",
+    });
+    const handle = await provider.startRun({
+      runId: "run-1",
+      agentId: "agent-main",
+      workspaceId: "workspace-demo",
+      agentHomePath: path.join(root, "agent-home"),
+      workspacePath: path.join(root, "workspace"),
+      sharedPath,
+      runPath: path.join(root, "run"),
+      wakePath: path.join(root, "run", "wake.json"),
+    });
+
+    for await (const _event of provider.exec({ handle, payload: payload() })) {
+      // Drain streamed output.
+    }
+
+    const command = fake.sandbox.sessionExecCalls[0]?.req.command ?? "";
+    expect(command).toContain(". '/run/runtime-env.sh'");
+    expect(command).not.toContain("secret-openai-key");
+    const envUpload = fake.sandbox.uploads.find((upload) => upload.remotePath === "/run/runtime-env.sh");
+    expect(envUpload?.content).toContain("OPENAI_API_KEY='secret-openai-key'");
+  } finally {
+    if (previousOpenAiKey === undefined) {
+      delete process.env.OPENAI_API_KEY;
+    } else {
+      process.env.OPENAI_API_KEY = previousOpenAiKey;
+    }
+  }
 });
 
 test("treats a streamed Daytona command without an exit code as failed", async () => {
