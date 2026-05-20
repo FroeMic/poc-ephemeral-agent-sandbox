@@ -36,6 +36,7 @@ export async function createServer() {
     provider: createSandboxProvider({
       sandboxProvider: config.sandboxProvider,
       repoRoot: config.repoRoot,
+      agentRuntime: config.agentRuntime,
       daytona: config.daytona,
     }),
     store,

@@ -2,7 +2,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { Daytona, type DaytonaConfig } from "@daytonaio/sdk";
 import { nowIso, type RunEvent, type RuntimeWakePayload } from "@poc/shared";
-import type { ExecInput, SandboxHandle, SandboxProvider, StartRunInput } from "./types.js";
+import type { AgentRuntimeConfig, ExecInput, SandboxHandle, SandboxProvider, StartRunInput } from "./types.js";
 
 export type DaytonaVolumeLike = {
   id: string;
@@ -43,6 +43,7 @@ export type DaytonaSandboxProviderOptions = {
   createTimeoutSec?: number;
   commandTimeoutSec?: number;
   deleteTimeoutSec?: number;
+  agentRuntime?: AgentRuntimeConfig;
 };
 
 type DaytonaHandle = SandboxHandle & {
@@ -58,6 +59,13 @@ const REMOTE_RUN = "/run";
 const REMOTE_WAKE = "/run/wake.json";
 const DEFAULT_VOLUME_NAME = "poc-ephemeral-agent-sandbox";
 const DEFAULT_IMAGE = "node:22-bookworm";
+const DEFAULT_AGENT_RUNTIME: AgentRuntimeConfig = {
+  mode: "mock",
+  pi: {
+    model: "openai/gpt-5.5",
+    thinkingLevel: "medium",
+  },
+};
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
@@ -145,6 +153,117 @@ emit({ type: "run_finished", runId: run.id, timestamp: nowIso(), status: "succee
 `;
 }
 
+function remotePiRuntimeSource(config: AgentRuntimeConfig) {
+  return String.raw`import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { AuthStorage, createAgentSession, ModelRegistry, SessionManager } from "@earendil-works/pi-coding-agent";
+
+const piConfig = ${JSON.stringify(config.pi, null, 2)};
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function emit(event) {
+  process.stdout.write(JSON.stringify(event) + "\n");
+}
+
+async function readOptional(filePath) {
+  try {
+    return await readFile(filePath, "utf8");
+  } catch (error) {
+    if (error && error.code === "ENOENT") return "";
+    throw error;
+  }
+}
+
+const payloadPath = process.argv[2] || "/run/wake.json";
+const payload = JSON.parse(await readFile(payloadPath, "utf8"));
+const { run, wakeEvent, agentHomePath, workspacePath, sharedPath } = payload;
+const piHome = "/agent-home/pi";
+
+emit({ type: "runtime_started", runId: run.id, timestamp: nowIso() });
+
+await mkdir(path.join(piHome, "sessions"), { recursive: true });
+await mkdir(path.join(workspacePath, "notes"), { recursive: true });
+
+const identity = await readOptional(path.join(agentHomePath, "IDENTITY.md"));
+const memory = await readOptional(path.join(agentHomePath, "MEMORY.md"));
+const workspaceInstructions = await readOptional(path.join(workspacePath, "AGENTS.md"));
+const sharedInstructions = await readOptional(path.join(sharedPath, "AGENTS.shared.md"));
+
+emit({
+  type: "stdout",
+  runId: run.id,
+  timestamp: nowIso(),
+  data: "Starting Pi runtime with model " + piConfig.model + " and thinking level " + piConfig.thinkingLevel,
+});
+
+const authStorage = AuthStorage.create(path.join(piHome, "auth.json"));
+const modelRegistry = ModelRegistry.create(authStorage, path.join(piHome, "models.json"));
+const { session } = await createAgentSession({
+  cwd: workspacePath,
+  sessionManager: SessionManager.inMemory(),
+  authStorage,
+  modelRegistry,
+  model: piConfig.model,
+  thinkingLevel: piConfig.thinkingLevel,
+  tools: ["read", "bash", "edit", "write", "grep", "find", "ls"],
+});
+
+const prompt = [
+  "You are running as a just-in-time agent inside an ephemeral Daytona sandbox.",
+  "",
+  "Use /workspace as the durable business workspace.",
+  "Use /agent-home as durable agent state.",
+  "",
+  "Agent identity:",
+  identity,
+  "",
+  "Agent memory:",
+  memory,
+  "",
+  "Workspace instructions:",
+  workspaceInstructions,
+  "",
+  "Shared instructions:",
+  sharedInstructions,
+  "",
+  "Wake source: " + wakeEvent.source,
+  "Wake message:",
+  wakeEvent.message,
+].join("\n");
+
+const response = await session.prompt(prompt);
+const responseText = typeof response === "string" ? response : JSON.stringify(response);
+
+emit({ type: "stdout", runId: run.id, timestamp: nowIso(), data: responseText });
+
+const notePath = path.join(workspacePath, "notes", run.id + ".md");
+await writeFile(notePath, [
+  "# Run " + run.id,
+  "",
+  "Message: " + wakeEvent.message,
+  "",
+  "Pi response:",
+  "",
+  responseText,
+  "",
+].join("\n"), "utf8");
+emit({ type: "file_changed", runId: run.id, timestamp: nowIso(), path: notePath });
+emit({ type: "artifact_created", runId: run.id, timestamp: nowIso(), path: notePath });
+
+await appendFile(path.join(agentHomePath, "MEMORY.md"), "\n## " + nowIso() + " " + run.id + "\n\nHandled wake with Pi: " + wakeEvent.message + "\n", "utf8");
+emit({ type: "file_changed", runId: run.id, timestamp: nowIso(), path: path.join(agentHomePath, "MEMORY.md") });
+
+if (run.taskId) {
+  emit({ type: "task_updated", runId: run.id, timestamp: nowIso(), taskId: run.taskId, status: "done" });
+}
+
+emit({ type: "run_finished", runId: run.id, timestamp: nowIso(), status: "succeeded" });
+`;
+}
+
 async function listFilesRecursive(root: string): Promise<Array<{ localPath: string; relativePath: string }>> {
   const entries: Array<{ localPath: string; relativePath: string }> = [];
 
@@ -186,6 +305,7 @@ export class DaytonaSandboxProvider implements SandboxProvider {
   private readonly createTimeoutSec: number;
   private readonly commandTimeoutSec: number;
   private readonly deleteTimeoutSec: number;
+  private readonly agentRuntime: AgentRuntimeConfig;
 
   constructor(options: DaytonaSandboxProviderOptions = {}) {
     this.client = options.client ?? createDaytonaClient(options);
@@ -195,6 +315,11 @@ export class DaytonaSandboxProvider implements SandboxProvider {
     this.createTimeoutSec = options.createTimeoutSec ?? 120;
     this.commandTimeoutSec = options.commandTimeoutSec ?? 120;
     this.deleteTimeoutSec = options.deleteTimeoutSec ?? 60;
+    this.agentRuntime = options.agentRuntime ?? DEFAULT_AGENT_RUNTIME;
+  }
+
+  getAgentRuntimeConfig(): AgentRuntimeConfig {
+    return this.agentRuntime;
   }
 
   async startRun(input: StartRunInput): Promise<DaytonaHandle> {
@@ -280,7 +405,9 @@ export class DaytonaSandboxProvider implements SandboxProvider {
       this.commandTimeoutSec,
     );
 
-    await sandbox.fs.uploadFile(Buffer.from(remoteRuntimeSource(), "utf8"), path.posix.join(REMOTE_HARNESS, "run.mjs"));
+    const runtimeSource =
+      this.agentRuntime.mode === "pi" ? remotePiRuntimeSource(this.agentRuntime) : remoteRuntimeSource();
+    await sandbox.fs.uploadFile(Buffer.from(runtimeSource, "utf8"), path.posix.join(REMOTE_HARNESS, "run.mjs"));
     await sandbox.fs.uploadFile(Buffer.from(JSON.stringify(withRemoteRuntimePaths(payload), null, 2), "utf8"), REMOTE_WAKE);
 
     await this.uploadSharedBundle(sandbox, localSharedPath);

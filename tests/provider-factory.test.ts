@@ -7,6 +7,13 @@ test("creates the local provider by default", () => {
   const provider = createSandboxProvider({
     sandboxProvider: "local",
     repoRoot: process.cwd(),
+    agentRuntime: {
+      mode: "mock",
+      pi: {
+        model: "openai/gpt-5.5",
+        thinkingLevel: "medium",
+      },
+    },
     daytona: {},
   });
 
@@ -17,6 +24,13 @@ test("creates the Daytona provider when configured", () => {
   const provider = createSandboxProvider({
     sandboxProvider: "daytona",
     repoRoot: process.cwd(),
+    agentRuntime: {
+      mode: "mock",
+      pi: {
+        model: "openai/gpt-5.5",
+        thinkingLevel: "medium",
+      },
+    },
     daytona: {
       apiKey: "fake-key",
       volumeName: "poc-volume",
@@ -24,4 +38,31 @@ test("creates the Daytona provider when configured", () => {
   });
 
   expect(provider).toBeInstanceOf(DaytonaSandboxProvider);
+});
+
+test("passes agent runtime config into the Daytona provider", () => {
+  const provider = createSandboxProvider({
+    sandboxProvider: "daytona",
+    repoRoot: process.cwd(),
+    agentRuntime: {
+      mode: "pi",
+      pi: {
+        model: "openai/gpt-5.5",
+        thinkingLevel: "high",
+      },
+    },
+    daytona: {
+      apiKey: "fake-key",
+      volumeName: "poc-volume",
+    },
+  });
+
+  expect(provider).toBeInstanceOf(DaytonaSandboxProvider);
+  expect((provider as DaytonaSandboxProvider).getAgentRuntimeConfig()).toEqual({
+    mode: "pi",
+    pi: {
+      model: "openai/gpt-5.5",
+      thinkingLevel: "high",
+    },
+  });
 });

@@ -1,0 +1,28 @@
+import { afterEach, expect, test } from "vitest";
+import { readConfig } from "../apps/control-plane/src/config.js";
+
+const originalEnv = { ...process.env };
+
+afterEach(() => {
+  process.env = { ...originalEnv };
+});
+
+test("defaults to the mock agent runtime mode", () => {
+  delete process.env.AGENT_RUNTIME_MODE;
+
+  expect(readConfig().agentRuntime.mode).toBe("mock");
+});
+
+test("reads Pi agent runtime settings from the environment", () => {
+  process.env.AGENT_RUNTIME_MODE = "pi";
+  process.env.PI_MODEL = "openai/gpt-5.5";
+  process.env.PI_THINKING_LEVEL = "high";
+
+  expect(readConfig().agentRuntime).toEqual({
+    mode: "pi",
+    pi: {
+      model: "openai/gpt-5.5",
+      thinkingLevel: "high",
+    },
+  });
+});

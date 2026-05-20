@@ -1,5 +1,15 @@
 import type { RunEvent, RuntimeWakePayload, SandboxProviderName } from "@poc/shared";
 
+export type AgentRuntimeMode = "mock" | "pi";
+
+export type AgentRuntimeConfig = {
+  mode: AgentRuntimeMode;
+  pi: {
+    model: string;
+    thinkingLevel: string;
+  };
+};
+
 export type SandboxHandle = {
   provider: SandboxProviderName;
   sandboxId: string;

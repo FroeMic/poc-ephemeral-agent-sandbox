@@ -178,3 +178,43 @@ test("uploads runtime files and parses JSONL events from Daytona command output"
   expect(fake.sandbox.commands.join("\n")).toContain("node '/agentruntime/harness/run.mjs' '/run/wake.json'");
   expect(events.map((event) => event.type)).toEqual(["runtime_started", "run_finished"]);
 });
+
+test("uploads the Pi runtime bundle when agent runtime mode is pi", async () => {
+  const root = await makeTempDir();
+  const sharedPath = path.join(root, "shared");
+  await mkdir(sharedPath, { recursive: true });
+  await writeFile(path.join(sharedPath, "manifest.json"), '{"version":"v1"}\n', "utf8");
+
+  const fake = new FakeDaytona();
+  const provider = new DaytonaSandboxProvider({
+    client: fake,
+    volumeName: "poc-volume",
+    agentRuntime: {
+      mode: "pi",
+      pi: {
+        model: "openai/gpt-5.5",
+        thinkingLevel: "high",
+      },
+    },
+  });
+  const handle = await provider.startRun({
+    runId: "run-1",
+    agentId: "agent-main",
+    workspaceId: "workspace-demo",
+    agentHomePath: path.join(root, "agent-home"),
+    workspacePath: path.join(root, "workspace"),
+    sharedPath,
+    runPath: path.join(root, "run"),
+    wakePath: path.join(root, "run", "wake.json"),
+  });
+
+  for await (const _event of provider.exec({ handle, payload: payload() })) {
+    // Drain the fake command output so uploads are performed.
+  }
+
+  const runner = fake.sandbox.uploads.find((upload) => upload.remotePath === "/agentruntime/harness/run.mjs");
+  expect(runner?.content).toContain("@earendil-works/pi-coding-agent");
+  expect(runner?.content).toContain("/agent-home/pi");
+  expect(runner?.content).toContain("openai/gpt-5.5");
+  expect(runner?.content).toContain("high");
+});

@@ -1,8 +1,9 @@
-import { DaytonaSandboxProvider, LocalSandboxProvider, type SandboxProvider } from "@poc/sandbox";
+import { DaytonaSandboxProvider, LocalSandboxProvider, type AgentRuntimeConfig, type SandboxProvider } from "@poc/sandbox";
 
 export type ProviderFactoryConfig = {
   sandboxProvider: string;
   repoRoot: string;
+  agentRuntime: AgentRuntimeConfig;
   daytona: {
     apiKey?: string | undefined;
     apiUrl?: string | undefined;
@@ -19,7 +20,7 @@ export function createSandboxProvider(config: ProviderFactoryConfig): SandboxPro
   }
 
   if (config.sandboxProvider === "daytona") {
-    return new DaytonaSandboxProvider(config.daytona);
+    return new DaytonaSandboxProvider({ ...config.daytona, agentRuntime: config.agentRuntime });
   }
 
   throw new Error(`Unsupported SANDBOX_PROVIDER: ${config.sandboxProvider}`);
