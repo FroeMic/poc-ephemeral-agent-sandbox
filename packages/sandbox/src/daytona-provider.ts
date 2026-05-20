@@ -251,7 +251,7 @@ emit({ type: "run_finished", runId: run.id, timestamp: nowIso(), status: "succee
 }
 
 function remotePiRuntimeSource(config: AgentRuntimeConfig) {
-  return String.raw`import { appendFile, cp, mkdir, readFile, writeFile } from "node:fs/promises";
+  return String.raw`import { appendFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { AuthStorage, createAgentSession, ModelRegistry, SessionManager } from "@earendil-works/pi-coding-agent";
 
@@ -296,6 +296,27 @@ function messageContentToText(content) {
     .join("\n");
 }
 
+async function copyTree(sourceDir, destinationDir) {
+  let entries;
+  try {
+    entries = await readdir(sourceDir, { withFileTypes: true });
+  } catch (error) {
+    if (error && error.code === "ENOENT") return;
+    throw error;
+  }
+  await mkdir(destinationDir, { recursive: true });
+  for (const entry of entries) {
+    const sourcePath = path.join(sourceDir, entry.name);
+    const destinationPath = path.join(destinationDir, entry.name);
+    if (entry.isDirectory()) {
+      await copyTree(sourcePath, destinationPath);
+    } else if (entry.isFile()) {
+      await mkdir(path.dirname(destinationPath), { recursive: true });
+      await writeFile(destinationPath, await readFile(sourcePath));
+    }
+  }
+}
+
 const payloadPath = process.argv[2] || "/run/wake.json";
 const payload = JSON.parse(await readFile(payloadPath, "utf8"));
 const { run, wakeEvent, agentHomePath, workspacePath, sharedPath } = payload;
@@ -307,14 +328,7 @@ await mkdir(path.join(piHome, "sessions"), { recursive: true });
 await mkdir(path.join(workspacePath, "notes"), { recursive: true });
 await mkdir(path.join(workspacePath, ".agents"), { recursive: true });
 
-try {
-  await cp(path.join(sharedPath, "skills"), path.join(workspacePath, ".agents", "skills"), {
-    recursive: true,
-    force: true,
-  });
-} catch (error) {
-  if (!error || error.code !== "ENOENT") throw error;
-}
+await copyTree(path.join(sharedPath, "skills"), path.join(workspacePath, ".agents", "skills"));
 
 const identity = await readOptional(path.join(agentHomePath, "IDENTITY.md"));
 const memory = await readOptional(path.join(agentHomePath, "MEMORY.md"));
