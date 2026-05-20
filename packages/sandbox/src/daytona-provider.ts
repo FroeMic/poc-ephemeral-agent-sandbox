@@ -321,10 +321,11 @@ const payloadPath = process.argv[2] || "/run/wake.json";
 const payload = JSON.parse(await readFile(payloadPath, "utf8"));
 const { run, wakeEvent, agentHomePath, workspacePath, sharedPath } = payload;
 const piHome = "/agent-home/pi";
+const workspaceSessionDir = path.join(piHome, "sessions", run.workspaceId);
 
 emit({ type: "runtime_started", runId: run.id, timestamp: nowIso() });
 
-await mkdir(path.join(piHome, "sessions"), { recursive: true });
+await mkdir(workspaceSessionDir, { recursive: true });
 await mkdir(path.join(workspacePath, "notes"), { recursive: true });
 await mkdir(path.join(workspacePath, ".agents"), { recursive: true });
 
@@ -352,7 +353,7 @@ if (!selectedModel) {
 const { session } = await createAgentSession({
   cwd: workspacePath,
   agentDir: piHome,
-  sessionManager: SessionManager.continueRecent(workspacePath, path.join(piHome, "sessions")),
+  sessionManager: SessionManager.continueRecent(workspacePath, workspaceSessionDir),
   authStorage,
   modelRegistry,
   model: selectedModel,

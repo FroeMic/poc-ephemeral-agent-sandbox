@@ -476,6 +476,7 @@ test("uploads the Pi runtime bundle when agent runtime mode is pi", async () => 
   const runner = fake.sandbox.uploads.find((upload) => upload.remotePath === "/agentruntime/harness/run.mjs");
   expect(runner?.content).toContain("@earendil-works/pi-coding-agent");
   expect(runner?.content).toContain("/agent-home/pi");
+  expect(runner?.content).toContain('path.join(piHome, "sessions", run.workspaceId)');
   expect(runner?.content).toContain("async function copyTree");
   expect(runner?.content).toContain("await writeFile(destinationPath, await readFile(sourcePath))");
   expect(runner?.content).not.toContain(" cp(");
