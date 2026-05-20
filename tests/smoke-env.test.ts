@@ -6,6 +6,7 @@ import {
   assertDaytonaCredentials,
   formatSmokePreflightFailure,
   getSmokePreflightStatus,
+  getSmokeRuntimePreflightFailure,
   loadDotEnvFile,
   loadDotEnvFiles,
 } from "../scripts/smoke-daytona-pi.js";
@@ -133,6 +134,18 @@ test("formats smoke preflight failure without a stack trace", () => {
       "Missing:",
       "- DAYTONA_API_KEY or DAYTONA_JWT_TOKEN plus DAYTONA_ORGANIZATION_ID",
       "- OPENAI_API_KEY",
+    ].join("\n"),
+  );
+});
+
+test("formats Daytona runtime preflight failures without leaking credentials", () => {
+  const error = new Error("Access denied for token dtn_secret");
+
+  expect(getSmokeRuntimePreflightFailure(error)).toBe(
+    [
+      "Daytona/Pi smoke runtime preflight failed.",
+      "Daytona access check failed: Access denied",
+      "Check that DAYTONA_API_KEY has write:sandboxes, delete:sandboxes, read:volumes, and write:volumes scopes.",
     ].join("\n"),
   );
 });

@@ -100,6 +100,22 @@ export function formatSmokePreflightFailure(preflight: SmokePreflightStatus) {
   ].join("\n");
 }
 
+function sanitizeSmokeErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/access denied/i.test(message)) return "Access denied";
+  if (/unauthorized/i.test(message)) return "Unauthorized";
+  if (/authentication/i.test(message)) return "Authentication failed";
+  return message.replace(/(?:dtn|sk|sk-proj)_[A-Za-z0-9_-]+/g, "[redacted]");
+}
+
+export function getSmokeRuntimePreflightFailure(error: unknown) {
+  return [
+    "Daytona/Pi smoke runtime preflight failed.",
+    `Daytona access check failed: ${sanitizeSmokeErrorMessage(error)}`,
+    "Check that DAYTONA_API_KEY has write:sandboxes, delete:sandboxes, read:volumes, and write:volumes scopes.",
+  ].join("\n");
+}
+
 function envInt(name: string, fallback: number) {
   const raw = process.env[name]?.trim();
   if (!raw) return fallback;
@@ -143,6 +159,23 @@ async function main() {
   });
 
   try {
+    try {
+      await provider.startRun({
+        runId: `preflight-${Date.now()}`,
+        agentId,
+        workspaceId,
+        agentHomePath: dataDir,
+        workspacePath: dataDir,
+        sharedPath: dataDir,
+        runPath: dataDir,
+        wakePath: path.join(dataDir, "wake.json"),
+      }).then((handle) => provider.stop(handle));
+    } catch (error) {
+      process.stderr.write(`${getSmokeRuntimePreflightFailure(error)}\n`);
+      process.exitCode = 1;
+      return;
+    }
+
     const store = await JsonStore.create(path.join(dataDir, "store.json"));
     const service = createRunService({
       repoRoot: process.cwd(),
