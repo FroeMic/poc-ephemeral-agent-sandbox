@@ -5,6 +5,7 @@ import { afterEach, expect, test } from "vitest";
 import { createRunService } from "../apps/control-plane/src/services/run-service.js";
 import { JsonStore } from "../apps/control-plane/src/db/store.js";
 import { LocalSandboxProvider } from "../packages/sandbox/src/local-provider.js";
+import type { ExecInput, SandboxHandle, SandboxProvider, StartRunInput } from "../packages/sandbox/src/types.js";
 
 const tempDirs: string[] = [];
 
@@ -17,6 +18,26 @@ async function makeTempDir() {
 afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
+
+class FailingSandboxProvider implements SandboxProvider {
+  readonly name = "daytona" as const;
+  stopped: SandboxHandle[] = [];
+
+  async startRun(input: StartRunInput): Promise<SandboxHandle> {
+    return {
+      provider: this.name,
+      sandboxId: `failing-${input.runId}`,
+    };
+  }
+
+  async *exec(_input: ExecInput) {
+    throw new Error("runtime exploded");
+  }
+
+  async stop(handle: SandboxHandle): Promise<void> {
+    this.stopped.push(handle);
+  }
+}
 
 test("runs the local sandbox lifecycle and preserves workspace state across runs", async () => {
   const dataDir = await makeTempDir();
@@ -58,4 +79,38 @@ test("runs the local sandbox lifecycle and preserves workspace state across runs
   const events = store.listRunEvents(second.runId);
   expect(events.map((event) => event.type)).toContain("sandbox_started");
   expect(events.map((event) => event.type)).toContain("run_finished");
+});
+
+test("stops the sandbox and records failure events when runtime execution fails", async () => {
+  const dataDir = await makeTempDir();
+  const store = await JsonStore.create(path.join(dataDir, "store.json"));
+  const provider = new FailingSandboxProvider();
+  const service = createRunService({
+    repoRoot: process.cwd(),
+    dataDir,
+    controlPlaneUrl: "http://127.0.0.1:3000",
+    sharedBundleVersion: "v1",
+    provider,
+    store,
+  });
+
+  const wake = await service.wake({
+    source: "api",
+    agentId: "agent-main",
+    workspaceId: "workspace-demo",
+    message: "This run should fail",
+  });
+  const completed = await service.waitForRun(wake.runId);
+
+  expect(completed.status).toBe("failed");
+  expect(completed.error).toBe("runtime exploded");
+  expect(provider.stopped).toEqual([
+    expect.objectContaining({
+      provider: "daytona",
+      sandboxId: `failing-${wake.runId}`,
+    }),
+  ]);
+  expect(store.listRunEvents(wake.runId).map((event) => event.type)).toEqual(
+    expect.arrayContaining(["sandbox_started", "run_finished", "sandbox_stopped"]),
+  );
 });
