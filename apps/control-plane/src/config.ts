@@ -6,6 +6,16 @@ function env(name: string, fallback: string) {
   return value && value.length > 0 ? value : fallback;
 }
 
+function envInt(name: string, fallback: number) {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`Unsupported ${name}: ${raw}`);
+  }
+  return parsed;
+}
+
 export function readConfig() {
   const repoRoot = process.cwd();
   const rawAgentRuntimeMode = env("AGENT_RUNTIME_MODE", "mock");
@@ -34,6 +44,9 @@ export function readConfig() {
       volumeName: env("DAYTONA_VOLUME_NAME", "poc-ephemeral-agent-sandbox"),
       image: env("DAYTONA_IMAGE", "node:22-bookworm"),
       snapshot: process.env.DAYTONA_SNAPSHOT?.trim(),
+      createTimeoutSec: envInt("DAYTONA_CREATE_TIMEOUT_SEC", 120),
+      commandTimeoutSec: envInt("DAYTONA_COMMAND_TIMEOUT_SEC", 900),
+      deleteTimeoutSec: envInt("DAYTONA_DELETE_TIMEOUT_SEC", 60),
     },
   };
 }

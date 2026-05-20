@@ -11,6 +11,9 @@ export type ProviderFactoryConfig = {
     volumeName?: string | undefined;
     image?: string | undefined;
     snapshot?: string | undefined;
+    createTimeoutSec?: number | undefined;
+    commandTimeoutSec?: number | undefined;
+    deleteTimeoutSec?: number | undefined;
   };
 };
 
@@ -20,7 +23,18 @@ export function createSandboxProvider(config: ProviderFactoryConfig): SandboxPro
   }
 
   if (config.sandboxProvider === "daytona") {
-    return new DaytonaSandboxProvider({ ...config.daytona, agentRuntime: config.agentRuntime });
+    return new DaytonaSandboxProvider({
+      ...(config.daytona.apiKey ? { apiKey: config.daytona.apiKey } : {}),
+      ...(config.daytona.apiUrl ? { apiUrl: config.daytona.apiUrl } : {}),
+      ...(config.daytona.target ? { target: config.daytona.target } : {}),
+      ...(config.daytona.volumeName ? { volumeName: config.daytona.volumeName } : {}),
+      ...(config.daytona.image ? { image: config.daytona.image } : {}),
+      ...(config.daytona.snapshot ? { snapshot: config.daytona.snapshot } : {}),
+      ...(config.daytona.createTimeoutSec ? { createTimeoutSec: config.daytona.createTimeoutSec } : {}),
+      ...(config.daytona.commandTimeoutSec ? { commandTimeoutSec: config.daytona.commandTimeoutSec } : {}),
+      ...(config.daytona.deleteTimeoutSec ? { deleteTimeoutSec: config.daytona.deleteTimeoutSec } : {}),
+      agentRuntime: config.agentRuntime,
+    });
   }
 
   throw new Error(`Unsupported SANDBOX_PROVIDER: ${config.sandboxProvider}`);

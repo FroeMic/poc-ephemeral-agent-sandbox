@@ -26,3 +26,17 @@ test("reads Pi agent runtime settings from the environment", () => {
     },
   });
 });
+
+test("reads Daytona timeout settings from the environment", () => {
+  process.env.DAYTONA_CREATE_TIMEOUT_SEC = "180";
+  process.env.DAYTONA_COMMAND_TIMEOUT_SEC = "900";
+  process.env.DAYTONA_DELETE_TIMEOUT_SEC = "90";
+
+  expect(readConfig().daytona).toEqual(
+    expect.objectContaining({
+      createTimeoutSec: 180,
+      commandTimeoutSec: 900,
+      deleteTimeoutSec: 90,
+    }),
+  );
+});
