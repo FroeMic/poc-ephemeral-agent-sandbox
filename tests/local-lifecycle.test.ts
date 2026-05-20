@@ -82,6 +82,33 @@ class FailedEventSandboxProvider implements SandboxProvider {
   }
 }
 
+class DoneThenFailingSandboxProvider implements SandboxProvider {
+  readonly name = "daytona" as const;
+  stopped: SandboxHandle[] = [];
+
+  async startRun(input: StartRunInput): Promise<SandboxHandle> {
+    return {
+      provider: this.name,
+      sandboxId: `done-then-failing-${input.runId}`,
+    };
+  }
+
+  async *exec(input: ExecInput) {
+    yield {
+      type: "task_updated" as const,
+      runId: input.payload.run.id,
+      timestamp: "2026-05-20T00:00:00.000Z",
+      taskId: input.payload.run.taskId!,
+      status: "done" as const,
+    };
+    throw new Error("runtime failed after task update");
+  }
+
+  async stop(handle: SandboxHandle): Promise<void> {
+    this.stopped.push(handle);
+  }
+}
+
 test("runs the local sandbox lifecycle and preserves workspace state across runs", async () => {
   const dataDir = await makeTempDir();
   const store = await JsonStore.create(path.join(dataDir, "store.json"));
@@ -217,4 +244,29 @@ test("marks the run failed when the runtime emits a failed finish event", async 
       sandboxId: `failed-event-${wake.runId}`,
     }),
   ]);
+});
+
+test("restores the task status when a run fails after an optimistic task update", async () => {
+  const dataDir = await makeTempDir();
+  const store = await JsonStore.create(path.join(dataDir, "store.json"));
+  const provider = new DoneThenFailingSandboxProvider();
+  const service = createRunService({
+    repoRoot: process.cwd(),
+    dataDir,
+    controlPlaneUrl: "http://127.0.0.1:3000",
+    sharedBundleVersion: "v1",
+    provider,
+    store,
+  });
+
+  const wake = await service.wake({
+    source: "api",
+    agentId: "agent-main",
+    workspaceId: "workspace-demo",
+    message: "This runtime marks done then fails",
+  });
+  const completed = await service.waitForRun(wake.runId);
+
+  expect(completed.status).toBe("failed");
+  expect(store.getTask(completed.taskId!)?.status).toBe("todo");
 });

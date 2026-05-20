@@ -129,6 +129,17 @@ export function createRunService(input: {
       runToken: handle.runtimePaths?.wakePath ?? fs.wakePath,
     };
 
+    async function markRunFailed(error: string, timestamp = nowIso()) {
+      if (task) {
+        const currentTask = input.store.getTask(task.id);
+        if (currentTask && currentTask.status !== task.status) {
+          await input.store.updateTaskStatus(task.id, task.status, timestamp);
+        }
+      }
+      currentRun = { ...currentRun, status: "failed", finishedAt: timestamp, error };
+      await input.store.updateRun(currentRun);
+    }
+
     try {
       let runtimeFinish: Extract<RunEvent, { type: "run_finished" }> | undefined;
       for await (const event of input.provider.exec({ handle, payload })) {
@@ -138,13 +149,7 @@ export function createRunService(input: {
         }
       }
       if (runtimeFinish?.status === "failed") {
-        currentRun = {
-          ...currentRun,
-          status: "failed",
-          finishedAt: runtimeFinish.timestamp,
-          ...(runtimeFinish.error ? { error: runtimeFinish.error } : {}),
-        };
-        await input.store.updateRun(currentRun);
+        await markRunFailed(runtimeFinish.error ?? "Runtime reported failure", runtimeFinish.timestamp);
       } else {
         currentRun = { ...currentRun, status: "succeeded", finishedAt: runtimeFinish?.timestamp ?? nowIso() };
         await input.store.updateRun(currentRun);
@@ -152,8 +157,7 @@ export function createRunService(input: {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await recordEvent({ type: "run_finished", runId: run.id, timestamp: nowIso(), status: "failed", error: message });
-      currentRun = { ...currentRun, status: "failed", finishedAt: nowIso(), error: message };
-      await input.store.updateRun(currentRun);
+      await markRunFailed(message);
     } finally {
       await input.provider.stop(handle);
       await recordEvent({ type: "sandbox_stopped", runId: run.id, timestamp: nowIso(), sandboxId: handle.sandboxId });
