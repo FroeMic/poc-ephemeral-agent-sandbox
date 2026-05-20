@@ -20,7 +20,7 @@ afterEach(async () => {
 class FakeSandbox implements DaytonaSandboxLike {
   id = "sandbox-123";
   uploads: Array<{ remotePath: string; content: string }> = [];
-  commands: string[] = [];
+  commands: Array<{ command: string; cwd?: string; env?: Record<string, string> }> = [];
   deleted = false;
 
   fs = {
@@ -33,8 +33,8 @@ class FakeSandbox implements DaytonaSandboxLike {
   };
 
   process = {
-    executeCommand: async (command: string) => {
-      this.commands.push(command);
+    executeCommand: async (command: string, cwd?: string, env?: Record<string, string>) => {
+      this.commands.push({ command, cwd, env });
       return {
         exitCode: 0,
         result: [
@@ -175,7 +175,9 @@ test("uploads runtime files and parses JSONL events from Daytona command output"
       "/run/wake.json",
     ]),
   );
-  expect(fake.sandbox.commands.join("\n")).toContain("node '/agentruntime/harness/run.mjs' '/run/wake.json'");
+  expect(fake.sandbox.commands.map((entry) => entry.command).join("\n")).toContain(
+    "node '/agentruntime/harness/run.mjs' '/run/wake.json'",
+  );
   expect(events.map((event) => event.type)).toEqual(["runtime_started", "run_finished"]);
 });
 
@@ -217,4 +219,56 @@ test("uploads the Pi runtime bundle when agent runtime mode is pi", async () => 
   expect(runner?.content).toContain("/agent-home/pi");
   expect(runner?.content).toContain("openai/gpt-5.5");
   expect(runner?.content).toContain("high");
+});
+
+test("prepares Pi dependencies and passes provider API keys to the Daytona command", async () => {
+  const root = await makeTempDir();
+  const sharedPath = path.join(root, "shared");
+  await mkdir(sharedPath, { recursive: true });
+  await writeFile(path.join(sharedPath, "manifest.json"), '{"version":"v1"}\n', "utf8");
+
+  const previousOpenAiKey = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "test-openai-key";
+  try {
+    const fake = new FakeDaytona();
+    const provider = new DaytonaSandboxProvider({
+      client: fake,
+      volumeName: "poc-volume",
+      agentRuntime: {
+        mode: "pi",
+        pi: {
+          model: "openai/gpt-5.5",
+          thinkingLevel: "high",
+        },
+      },
+    });
+    const handle = await provider.startRun({
+      runId: "run-1",
+      agentId: "agent-main",
+      workspaceId: "workspace-demo",
+      agentHomePath: path.join(root, "agent-home"),
+      workspacePath: path.join(root, "workspace"),
+      sharedPath,
+      runPath: path.join(root, "run"),
+      wakePath: path.join(root, "run", "wake.json"),
+    });
+
+    for await (const _event of provider.exec({ handle, payload: payload() })) {
+      // Drain fake output.
+    }
+
+    expect(fake.sandbox.uploads.map((upload) => upload.remotePath)).toContain("/agentruntime/harness/package.json");
+    expect(fake.sandbox.commands.map((entry) => entry.command).join("\n")).toContain("npm install");
+    const runCommand = fake.sandbox.commands.find((entry) =>
+      entry.command.includes("node '/agentruntime/harness/run.mjs' '/run/wake.json'"),
+    );
+    expect(runCommand?.env?.OPENAI_API_KEY).toBe("test-openai-key");
+    expect(runCommand?.env?.PI_CODING_AGENT_DIR).toBe("/agent-home/pi");
+  } finally {
+    if (previousOpenAiKey === undefined) {
+      delete process.env.OPENAI_API_KEY;
+    } else {
+      process.env.OPENAI_API_KEY = previousOpenAiKey;
+    }
+  }
 });

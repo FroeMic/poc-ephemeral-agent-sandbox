@@ -154,7 +154,7 @@ emit({ type: "run_finished", runId: run.id, timestamp: nowIso(), status: "succee
 }
 
 function remotePiRuntimeSource(config: AgentRuntimeConfig) {
-  return String.raw`import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
+  return String.raw`import { appendFile, cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { AuthStorage, createAgentSession, ModelRegistry, SessionManager } from "@earendil-works/pi-coding-agent";
 
@@ -177,6 +177,28 @@ async function readOptional(filePath) {
   }
 }
 
+function splitModelName(modelName) {
+  const separator = modelName.indexOf("/");
+  if (separator === -1) return { provider: undefined, modelId: modelName };
+  return {
+    provider: modelName.slice(0, separator),
+    modelId: modelName.slice(separator + 1),
+  };
+}
+
+function messageContentToText(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return JSON.stringify(content);
+  return content
+    .map((part) => {
+      if (part && part.type === "text") return part.text;
+      if (part && part.type) return "[" + part.type + "]";
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
 const payloadPath = process.argv[2] || "/run/wake.json";
 const payload = JSON.parse(await readFile(payloadPath, "utf8"));
 const { run, wakeEvent, agentHomePath, workspacePath, sharedPath } = payload;
@@ -186,6 +208,16 @@ emit({ type: "runtime_started", runId: run.id, timestamp: nowIso() });
 
 await mkdir(path.join(piHome, "sessions"), { recursive: true });
 await mkdir(path.join(workspacePath, "notes"), { recursive: true });
+await mkdir(path.join(workspacePath, ".agents"), { recursive: true });
+
+try {
+  await cp(path.join(sharedPath, "skills"), path.join(workspacePath, ".agents", "skills"), {
+    recursive: true,
+    force: true,
+  });
+} catch (error) {
+  if (!error || error.code !== "ENOENT") throw error;
+}
 
 const identity = await readOptional(path.join(agentHomePath, "IDENTITY.md"));
 const memory = await readOptional(path.join(agentHomePath, "MEMORY.md"));
@@ -201,14 +233,28 @@ emit({
 
 const authStorage = AuthStorage.create(path.join(piHome, "auth.json"));
 const modelRegistry = ModelRegistry.create(authStorage, path.join(piHome, "models.json"));
+const modelParts = splitModelName(piConfig.model);
+const selectedModel = modelParts.provider ? modelRegistry.find(modelParts.provider, modelParts.modelId) : undefined;
+if (!selectedModel) {
+  throw new Error("Configured Pi model not found: " + piConfig.model);
+}
 const { session } = await createAgentSession({
   cwd: workspacePath,
-  sessionManager: SessionManager.inMemory(),
+  agentDir: piHome,
+  sessionManager: SessionManager.continueRecent(workspacePath, path.join(piHome, "sessions")),
   authStorage,
   modelRegistry,
-  model: piConfig.model,
+  model: selectedModel,
   thinkingLevel: piConfig.thinkingLevel,
   tools: ["read", "bash", "edit", "write", "grep", "find", "ls"],
+});
+
+session.subscribe((event) => {
+  if (event.type === "agent_start") {
+    emit({ type: "stdout", runId: run.id, timestamp: nowIso(), data: "Pi agent started" });
+  } else if (event.type === "tool_call" || event.type === "tool_result") {
+    emit({ type: "stdout", runId: run.id, timestamp: nowIso(), data: "Pi event: " + event.type });
+  }
 });
 
 const prompt = [
@@ -234,8 +280,9 @@ const prompt = [
   wakeEvent.message,
 ].join("\n");
 
-const response = await session.prompt(prompt);
-const responseText = typeof response === "string" ? response : JSON.stringify(response);
+await session.prompt(prompt, { source: "api" });
+const lastAssistant = [...session.messages].reverse().find((message) => message.role === "assistant");
+const responseText = lastAssistant ? messageContentToText(lastAssistant.content) : "Pi completed without an assistant text response.";
 
 emit({ type: "stdout", runId: run.id, timestamp: nowIso(), data: responseText });
 
@@ -262,6 +309,44 @@ if (run.taskId) {
 
 emit({ type: "run_finished", runId: run.id, timestamp: nowIso(), status: "succeeded" });
 `;
+}
+
+function remotePiPackageJson() {
+  return `${JSON.stringify(
+    {
+      type: "module",
+      dependencies: {
+        "@earendil-works/pi-coding-agent": "0.75.4",
+      },
+    },
+    null,
+    2,
+  )}\n`;
+}
+
+function runtimeCommandEnv(): Record<string, string> {
+  const names = [
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+    "AZURE_OPENAI_API_KEY",
+    "DEEPSEEK_API_KEY",
+    "GOOGLE_API_KEY",
+    "GEMINI_API_KEY",
+    "OPENROUTER_API_KEY",
+    "VERCEL_AI_GATEWAY_API_KEY",
+    "GITHUB_TOKEN",
+  ];
+  const env: Record<string, string> = {
+    PI_CODING_AGENT_DIR: "/agent-home/pi",
+    PI_CODING_AGENT_SESSION_DIR: "/agent-home/pi/sessions",
+    PI_SKIP_VERSION_CHECK: "1",
+    PI_TELEMETRY: "0",
+  };
+  for (const name of names) {
+    const value = process.env[name];
+    if (value) env[name] = value;
+  }
+  return env;
 }
 
 async function listFilesRecursive(root: string): Promise<Array<{ localPath: string; relativePath: string }>> {
@@ -364,10 +449,19 @@ export class DaytonaSandboxProvider implements SandboxProvider {
     if (!handle.sandbox) throw new Error("Daytona handle is missing sandbox instance");
 
     await this.prepareRemoteRuntime(handle.sandbox, input.payload, handle.localSharedPath);
+    if (this.agentRuntime.mode === "pi") {
+      await handle.sandbox.process.executeCommand(
+        "npm install --omit=dev",
+        REMOTE_HARNESS,
+        runtimeCommandEnv(),
+        this.commandTimeoutSec,
+      );
+    }
+
     const result = await handle.sandbox.process.executeCommand(
       `node ${shellQuote(path.posix.join(REMOTE_HARNESS, "run.mjs"))} ${shellQuote(REMOTE_WAKE)}`,
       REMOTE_WORKSPACE,
-      undefined,
+      runtimeCommandEnv(),
       this.commandTimeoutSec,
     );
 
@@ -408,6 +502,9 @@ export class DaytonaSandboxProvider implements SandboxProvider {
     const runtimeSource =
       this.agentRuntime.mode === "pi" ? remotePiRuntimeSource(this.agentRuntime) : remoteRuntimeSource();
     await sandbox.fs.uploadFile(Buffer.from(runtimeSource, "utf8"), path.posix.join(REMOTE_HARNESS, "run.mjs"));
+    if (this.agentRuntime.mode === "pi") {
+      await sandbox.fs.uploadFile(Buffer.from(remotePiPackageJson(), "utf8"), path.posix.join(REMOTE_HARNESS, "package.json"));
+    }
     await sandbox.fs.uploadFile(Buffer.from(JSON.stringify(withRemoteRuntimePaths(payload), null, 2), "utf8"), REMOTE_WAKE);
 
     await this.uploadSharedBundle(sandbox, localSharedPath);

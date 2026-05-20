@@ -7,6 +7,7 @@
     "agentruntime": "./src/index.ts"
   },
   "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.75.4",
     "@poc/shared": "workspace:*"
   }
 }
