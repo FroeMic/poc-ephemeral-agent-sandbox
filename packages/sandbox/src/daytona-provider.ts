@@ -24,7 +24,7 @@ export type DaytonaSandboxLike = {
     createSession?(sessionId: string): Promise<void>;
     executeSessionCommand?(
       sessionId: string,
-      req: { command: string; runAsync?: boolean; cwd?: string; envs?: Record<string, string>; suppressInputEcho?: boolean },
+      req: { command: string; runAsync?: boolean; suppressInputEcho?: boolean },
       timeout?: number,
     ): Promise<{ cmdId?: string; exitCode?: number; stdout?: string; output?: string }>;
     getSessionCommandLogs?(
@@ -443,6 +443,13 @@ function supportsSessionStreaming(process: DaytonaSandboxLike["process"]) {
   );
 }
 
+function withShellCwdAndEnv(command: string, cwd: string, env: Record<string, string>) {
+  const assignments = Object.entries(env)
+    .map(([key, value]) => `${key}=${shellQuote(value)}`)
+    .join(" ");
+  return `cd ${shellQuote(cwd)} && ${assignments ? `${assignments} ` : ""}${command}`;
+}
+
 async function listFilesRecursive(root: string): Promise<Array<{ localPath: string; relativePath: string }>> {
   const entries: Array<{ localPath: string; relativePath: string }> = [];
 
@@ -646,9 +653,7 @@ export class DaytonaSandboxProvider implements SandboxProvider {
       const response = await sandbox.process.executeSessionCommand?.(
         sessionId,
         {
-          command,
-          cwd: REMOTE_WORKSPACE,
-          envs: runtimeCommandEnv(),
+          command: withShellCwdAndEnv(command, REMOTE_WORKSPACE, runtimeCommandEnv()),
           runAsync: true,
           suppressInputEcho: true,
         },

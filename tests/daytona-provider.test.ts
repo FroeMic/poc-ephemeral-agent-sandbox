@@ -60,7 +60,7 @@ class FakeSandbox implements DaytonaSandboxLike {
 class StreamingFakeSandbox extends FakeSandbox {
   sessionCreateCalls: string[] = [];
   sessionDeleteCalls: string[] = [];
-  sessionExecCalls: Array<{ sessionId: string; req: { command: string; runAsync?: boolean; cwd?: string; envs?: Record<string, string> } }> = [];
+  sessionExecCalls: Array<{ sessionId: string; req: { command: string; runAsync?: boolean; suppressInputEcho?: boolean } }> = [];
   sessionLogCalls: Array<{ sessionId: string; commandId: string }> = [];
   sessionExitCode: number | undefined = 0;
 
@@ -71,7 +71,7 @@ class StreamingFakeSandbox extends FakeSandbox {
     },
     executeSessionCommand: async (
       sessionId: string,
-      req: { command: string; runAsync?: boolean; cwd?: string; envs?: Record<string, string> },
+      req: { command: string; runAsync?: boolean; suppressInputEcho?: boolean },
     ) => {
       this.sessionExecCalls.push({ sessionId, req });
       return { cmdId: "cmd-1" };
@@ -258,14 +258,16 @@ test("streams JSONL events from Daytona followed session logs when available", a
   }
 
   expect(fake.sandbox.sessionCreateCalls).toEqual(["run-run-1"]);
-  expect(fake.sandbox.sessionExecCalls[0]).toEqual({
-    sessionId: "run-run-1",
-    req: expect.objectContaining({
-      command: "node '/agentruntime/harness/run.mjs' '/run/wake.json'",
-      cwd: "/workspace",
+  expect(fake.sandbox.sessionExecCalls[0]?.sessionId).toBe("run-run-1");
+  expect(fake.sandbox.sessionExecCalls[0]?.req).toEqual(
+    expect.objectContaining({
       runAsync: true,
+      suppressInputEcho: true,
     }),
-  });
+  );
+  expect(fake.sandbox.sessionExecCalls[0]?.req.command).toContain("cd '/workspace' &&");
+  expect(fake.sandbox.sessionExecCalls[0]?.req.command).toContain("PI_CODING_AGENT_DIR='/agent-home/pi'");
+  expect(fake.sandbox.sessionExecCalls[0]?.req.command).toContain("node '/agentruntime/harness/run.mjs' '/run/wake.json'");
   expect(fake.sandbox.sessionLogCalls).toEqual([{ sessionId: "run-run-1", commandId: "cmd-1" }]);
   expect(fake.sandbox.sessionDeleteCalls).toEqual(["run-run-1"]);
   expect(events.map((event) => event.type)).toEqual(["runtime_started", "run_finished", "stderr"]);
