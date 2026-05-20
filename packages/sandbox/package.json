@@ -1,0 +1,13 @@
+{
+  "name": "@poc/sandbox",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@daytonaio/sdk": "^0.175.0",
+    "@poc/shared": "workspace:*"
+  }
+}

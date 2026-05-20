@@ -1,0 +1,12 @@
+{
+  "name": "@poc/control-plane",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@poc/agentruntime": "workspace:*",
+    "@poc/sandbox": "workspace:*",
+    "@poc/shared": "workspace:*",
+    "zod": "^3.25.76"
+  }
+}

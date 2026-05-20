@@ -1,0 +1,12 @@
+{
+  "name": "@poc/agentruntime",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "agentruntime": "./src/index.ts"
+  },
+  "dependencies": {
+    "@poc/shared": "workspace:*"
+  }
+}
