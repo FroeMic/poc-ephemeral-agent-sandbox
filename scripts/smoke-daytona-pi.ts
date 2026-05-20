@@ -52,6 +52,11 @@ export async function loadDotEnvFile(filePath = path.resolve(process.cwd(), ".en
   }
 }
 
+export async function loadDotEnvFiles(dir = process.cwd()) {
+  await loadDotEnvFile(path.resolve(dir, ".env.local"));
+  await loadDotEnvFile(path.resolve(dir, ".env"));
+}
+
 function requiredEnv(name: string) {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is required`);
@@ -80,7 +85,7 @@ function requireModelCredentials(model: string) {
 }
 
 async function main() {
-  await loadDotEnvFile();
+  await loadDotEnvFiles();
   assertDaytonaCredentials();
   const model = process.env.PI_MODEL?.trim() || "openai/gpt-5.5";
   requireModelCredentials(model);

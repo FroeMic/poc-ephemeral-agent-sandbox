@@ -90,6 +90,8 @@ export OPENAI_API_KEY=...
 SANDBOX_PROVIDER=daytona AGENT_RUNTIME_MODE=pi pnpm smoke:daytona:pi
 ```
 
+The smoke script also reads `.env.local` and `.env` from the repo root without overriding exported environment variables. `.env.local` has precedence over `.env`.
+
 The smoke test performs two separate Pi-backed Daytona wakes for the same `agentId` and `workspaceId`, stops each ephemeral sandbox, then starts an inspection sandbox with the same persistent volume subpaths mounted. It verifies that both run notes exist under `/workspace/notes`, both run IDs were appended to `/agent-home/MEMORY.md`, and Pi session storage exists under `/agent-home/pi/sessions`.
 
 ## Disk Model
