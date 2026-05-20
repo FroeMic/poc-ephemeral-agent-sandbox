@@ -322,13 +322,16 @@ const payload = JSON.parse(await readFile(payloadPath, "utf8"));
 const { run, wakeEvent, agentHomePath, workspacePath, sharedPath } = payload;
 const piHome = "/agent-home/pi";
 const workspaceSessionDir = path.join(piHome, "sessions", run.workspaceId);
+const scratchSessionDir = path.join("/tmp", "pi-sessions", run.workspaceId);
 
 emit({ type: "runtime_started", runId: run.id, timestamp: nowIso() });
 
 await mkdir(workspaceSessionDir, { recursive: true });
+await mkdir(scratchSessionDir, { recursive: true });
 await mkdir(path.join(workspacePath, "notes"), { recursive: true });
 await mkdir(path.join(workspacePath, ".agents"), { recursive: true });
 
+await copyTree(workspaceSessionDir, scratchSessionDir);
 await copyTree(path.join(sharedPath, "skills"), path.join(workspacePath, ".agents", "skills"));
 
 const identity = await readOptional(path.join(agentHomePath, "IDENTITY.md"));
@@ -353,7 +356,7 @@ if (!selectedModel) {
 const { session } = await createAgentSession({
   cwd: workspacePath,
   agentDir: piHome,
-  sessionManager: SessionManager.continueRecent(workspacePath, workspaceSessionDir),
+  sessionManager: SessionManager.continueRecent(workspacePath, scratchSessionDir),
   authStorage,
   modelRegistry,
   model: selectedModel,
@@ -393,6 +396,7 @@ const prompt = [
 ].join("\n");
 
 await session.prompt(prompt, { source: "rpc" });
+await copyTree(scratchSessionDir, workspaceSessionDir);
 const lastAssistant = [...session.messages].reverse().find((message) => message.role === "assistant");
 const responseText = lastAssistant ? messageContentToText(lastAssistant.content) : "Pi completed without an assistant text response.";
 
