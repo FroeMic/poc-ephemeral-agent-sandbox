@@ -40,3 +40,15 @@ test("reads Daytona timeout settings from the environment", () => {
     }),
   );
 });
+
+test("reads Daytona JWT authentication settings from the environment", () => {
+  process.env.DAYTONA_JWT_TOKEN = "jwt-token";
+  process.env.DAYTONA_ORGANIZATION_ID = "org-id";
+
+  expect(readConfig().daytona).toEqual(
+    expect.objectContaining({
+      jwtToken: "jwt-token",
+      organizationId: "org-id",
+    }),
+  );
+});

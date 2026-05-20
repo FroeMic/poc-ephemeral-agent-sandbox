@@ -58,6 +58,14 @@ function requiredEnv(name: string) {
   return value;
 }
 
+export function assertDaytonaCredentials() {
+  const apiKey = process.env.DAYTONA_API_KEY?.trim();
+  const jwtToken = process.env.DAYTONA_JWT_TOKEN?.trim();
+  const organizationId = process.env.DAYTONA_ORGANIZATION_ID?.trim();
+  if (apiKey || (jwtToken && organizationId)) return;
+  throw new Error("DAYTONA_API_KEY or DAYTONA_JWT_TOKEN plus DAYTONA_ORGANIZATION_ID is required");
+}
+
 function envInt(name: string, fallback: number) {
   const raw = process.env[name]?.trim();
   if (!raw) return fallback;
@@ -73,7 +81,7 @@ function requireModelCredentials(model: string) {
 
 async function main() {
   await loadDotEnvFile();
-  requiredEnv("DAYTONA_API_KEY");
+  assertDaytonaCredentials();
   const model = process.env.PI_MODEL?.trim() || "openai/gpt-5.5";
   requireModelCredentials(model);
 
@@ -82,6 +90,8 @@ async function main() {
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "poc-daytona-pi-smoke-"));
   const provider = new DaytonaSandboxProvider({
     apiKey: process.env.DAYTONA_API_KEY?.trim(),
+    jwtToken: process.env.DAYTONA_JWT_TOKEN?.trim(),
+    organizationId: process.env.DAYTONA_ORGANIZATION_ID?.trim(),
     apiUrl: process.env.DAYTONA_API_URL?.trim(),
     target: process.env.DAYTONA_TARGET?.trim(),
     volumeName: process.env.DAYTONA_VOLUME_NAME?.trim() || "poc-ephemeral-agent-sandbox",

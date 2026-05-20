@@ -66,3 +66,30 @@ test("passes agent runtime config into the Daytona provider", () => {
     },
   });
 });
+
+test("passes Daytona JWT authentication config into the Daytona provider", () => {
+  const provider = createSandboxProvider({
+    sandboxProvider: "daytona",
+    repoRoot: process.cwd(),
+    agentRuntime: {
+      mode: "mock",
+      pi: {
+        model: "openai/gpt-5.5",
+        thinkingLevel: "medium",
+      },
+    },
+    daytona: {
+      jwtToken: "jwt-token",
+      organizationId: "org-id",
+      volumeName: "poc-volume",
+    },
+  });
+
+  expect(provider).toBeInstanceOf(DaytonaSandboxProvider);
+  expect((provider as DaytonaSandboxProvider).getClientConfig()).toEqual(
+    expect.objectContaining({
+      jwtToken: "jwt-token",
+      organizationId: "org-id",
+    }),
+  );
+});

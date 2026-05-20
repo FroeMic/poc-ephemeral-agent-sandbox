@@ -6,6 +6,8 @@ export type ProviderFactoryConfig = {
   agentRuntime: AgentRuntimeConfig;
   daytona: {
     apiKey?: string | undefined;
+    jwtToken?: string | undefined;
+    organizationId?: string | undefined;
     apiUrl?: string | undefined;
     target?: string | undefined;
     volumeName?: string | undefined;
@@ -25,6 +27,8 @@ export function createSandboxProvider(config: ProviderFactoryConfig): SandboxPro
   if (config.sandboxProvider === "daytona") {
     return new DaytonaSandboxProvider({
       ...(config.daytona.apiKey ? { apiKey: config.daytona.apiKey } : {}),
+      ...(config.daytona.jwtToken ? { jwtToken: config.daytona.jwtToken } : {}),
+      ...(config.daytona.organizationId ? { organizationId: config.daytona.organizationId } : {}),
       ...(config.daytona.apiUrl ? { apiUrl: config.daytona.apiUrl } : {}),
       ...(config.daytona.target ? { target: config.daytona.target } : {}),
       ...(config.daytona.volumeName ? { volumeName: config.daytona.volumeName } : {}),

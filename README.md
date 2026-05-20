@@ -27,10 +27,13 @@ CONTROL_PLANE_URL=http://localhost:3777 pnpm wake:demo
 
 The Daytona provider creates an ephemeral Daytona sandbox, mounts one persistent Daytona volume at separate subpaths for `/agent-home` and `/workspace`, uploads the shared runtime bundle and harness, executes the runtime, parses JSONL events, and deletes the sandbox.
 
-Required:
+Required auth is either `DAYTONA_API_KEY` or both `DAYTONA_JWT_TOKEN` and `DAYTONA_ORGANIZATION_ID`:
 
 ```bash
 export DAYTONA_API_KEY=...
+# or:
+export DAYTONA_JWT_TOKEN=...
+export DAYTONA_ORGANIZATION_ID=...
 export SANDBOX_PROVIDER=daytona
 export DAYTONA_VOLUME_NAME=poc-ephemeral-agent-sandbox
 export DAYTONA_IMAGE=node:22-bookworm
@@ -82,6 +85,7 @@ Run the real Daytona/Pi persistence smoke test:
 
 ```bash
 export DAYTONA_API_KEY=...
+# or export DAYTONA_JWT_TOKEN=... and DAYTONA_ORGANIZATION_ID=...
 export OPENAI_API_KEY=...
 SANDBOX_PROVIDER=daytona AGENT_RUNTIME_MODE=pi pnpm smoke:daytona:pi
 ```

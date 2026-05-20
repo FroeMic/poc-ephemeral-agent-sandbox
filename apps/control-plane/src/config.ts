@@ -39,6 +39,8 @@ export function readConfig() {
     },
     daytona: {
       apiKey: process.env.DAYTONA_API_KEY?.trim(),
+      jwtToken: process.env.DAYTONA_JWT_TOKEN?.trim(),
+      organizationId: process.env.DAYTONA_ORGANIZATION_ID?.trim(),
       apiUrl: process.env.DAYTONA_API_URL?.trim(),
       target: process.env.DAYTONA_TARGET?.trim(),
       volumeName: env("DAYTONA_VOLUME_NAME", "poc-ephemeral-agent-sandbox"),

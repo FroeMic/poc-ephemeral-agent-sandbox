@@ -35,6 +35,8 @@ export type DaytonaClientLike = {
 export type DaytonaSandboxProviderOptions = {
   client?: DaytonaClientLike;
   apiKey?: string | undefined;
+  jwtToken?: string | undefined;
+  organizationId?: string | undefined;
   apiUrl?: string | undefined;
   target?: string | undefined;
   volumeName?: string | undefined;
@@ -74,6 +76,8 @@ function shellQuote(value: string): string {
 function createDaytonaClient(options: DaytonaSandboxProviderOptions): DaytonaClientLike {
   const config: DaytonaConfig = {};
   if (options.apiKey) config.apiKey = options.apiKey;
+  if (options.jwtToken) config.jwtToken = options.jwtToken;
+  if (options.organizationId) config.organizationId = options.organizationId;
   if (options.apiUrl) config.apiUrl = options.apiUrl;
   if (options.target) config.target = options.target;
   return new Daytona(config) as unknown as DaytonaClientLike;
@@ -391,9 +395,20 @@ export class DaytonaSandboxProvider implements SandboxProvider {
   private readonly commandTimeoutSec: number;
   private readonly deleteTimeoutSec: number;
   private readonly agentRuntime: AgentRuntimeConfig;
+  private readonly clientConfig: Pick<
+    DaytonaSandboxProviderOptions,
+    "apiKey" | "jwtToken" | "organizationId" | "apiUrl" | "target"
+  >;
 
   constructor(options: DaytonaSandboxProviderOptions = {}) {
     this.client = options.client ?? createDaytonaClient(options);
+    this.clientConfig = {
+      ...(options.apiKey ? { apiKey: options.apiKey } : {}),
+      ...(options.jwtToken ? { jwtToken: options.jwtToken } : {}),
+      ...(options.organizationId ? { organizationId: options.organizationId } : {}),
+      ...(options.apiUrl ? { apiUrl: options.apiUrl } : {}),
+      ...(options.target ? { target: options.target } : {}),
+    };
     this.volumeName = options.volumeName ?? DEFAULT_VOLUME_NAME;
     this.image = options.image ?? DEFAULT_IMAGE;
     this.snapshot = options.snapshot ?? null;
@@ -405,6 +420,10 @@ export class DaytonaSandboxProvider implements SandboxProvider {
 
   getAgentRuntimeConfig(): AgentRuntimeConfig {
     return this.agentRuntime;
+  }
+
+  getClientConfig(): Pick<DaytonaSandboxProviderOptions, "apiKey" | "jwtToken" | "organizationId" | "apiUrl" | "target"> {
+    return this.clientConfig;
   }
 
   async startRun(input: StartRunInput): Promise<DaytonaHandle> {
