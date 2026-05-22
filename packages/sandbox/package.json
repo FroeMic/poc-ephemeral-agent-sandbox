@@ -7,7 +7,9 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@blaxel/core": "^0.2.84",
     "@daytonaio/sdk": "^0.175.0",
-    "@poc/shared": "workspace:*"
+    "@poc/shared": "workspace:*",
+    "e2b": "^2.23.0"
   }
 }

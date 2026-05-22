@@ -1,7 +1,7 @@
 import http from "node:http";
 import path from "node:path";
 import { JsonStore } from "./db/store.js";
-import { readConfig } from "./config.js";
+import { loadDotEnvFiles, readConfig } from "./config.js";
 import { renderDashboardHtml } from "./dashboard.js";
 import { createSandboxProvider } from "./provider.js";
 import { createRunService } from "./services/run-service.js";
@@ -26,6 +26,7 @@ function sendHtml(res: http.ServerResponse, status: number, body: string) {
 }
 
 export async function createServer() {
+  await loadDotEnvFiles();
   const config = readConfig();
   const store = await JsonStore.create(path.join(config.dataDir, "store.json"));
   const runService = createRunService({
@@ -38,7 +39,18 @@ export async function createServer() {
       repoRoot: config.repoRoot,
       agentRuntime: config.agentRuntime,
       daytona: config.daytona,
+      e2b: config.e2b,
+      blaxel: config.blaxel,
     }),
+    createProvider: (sandboxProvider) =>
+      createSandboxProvider({
+        sandboxProvider,
+        repoRoot: config.repoRoot,
+        agentRuntime: config.agentRuntime,
+        daytona: config.daytona,
+        e2b: config.e2b,
+        blaxel: config.blaxel,
+      }),
     store,
   });
 

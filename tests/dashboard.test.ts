@@ -28,9 +28,21 @@ test("chat wake payload includes selected agent ids and prior transcript context
   expect(html).toContain('source: "chat"');
   expect(html).toContain("requestAgent.agentId");
   expect(html).toContain("requestAgent.workspaceId");
+  expect(html).toContain("sandboxProvider: activeProvider");
   expect(html).toContain("buildWakeMessage");
   expect(html).toContain("Conversation so far:");
   expect(html).toContain("localStorage");
+});
+
+test("renders a provider selector for local, Daytona, E2B, and Blaxel", () => {
+  const html = renderDashboardHtml();
+
+  expect(html).toContain('id="provider-select"');
+  expect(html).toContain('value="local"');
+  expect(html).toContain('value="daytona"');
+  expect(html).toContain('value="e2b"');
+  expect(html).toContain('value="blaxel"');
+  expect(html).toContain("activeProvider = providerSelect.value");
 });
 
 test("chat submit locks agent switching while pending without aborting wake creation", () => {
@@ -51,4 +63,12 @@ test("chat renders assistantMessage and keeps network errors out of transcript",
   expect(html).toContain("showNotice");
   expect(html).toContain("Transport error:");
   expect(html).not.toContain('activeMessages().push({ role: "error"');
+});
+
+test("chat failed runs show the run error instead of a fake Done assistant message", () => {
+  const html = renderDashboardHtml();
+
+  expect(html).toContain('if (body.run?.status === "failed")');
+  expect(html).toContain('throw new Error("Run failed: " + (body.run.error || "unknown error"))');
+  expect(html).toContain("body.assistantMessage || \"Done.\"");
 });

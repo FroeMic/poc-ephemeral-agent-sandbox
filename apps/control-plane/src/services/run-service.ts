@@ -17,12 +17,31 @@ import { materializeRunFilesystem } from "./workspace-materializer.js";
 
 export type RunService = ReturnType<typeof createRunService>;
 
+function formatErrorMessage(error: unknown) {
+  let message: string;
+  if (error instanceof Error) {
+    message = error.message;
+  } else if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
+    message = error.message;
+  } else if (typeof error === "string") {
+    message = error;
+  } else {
+    try {
+      message = JSON.stringify(error);
+    } catch {
+      message = String(error);
+    }
+  }
+  return message.replace(/(?:dtn|sk|sk-proj|e2b|bl|adt)_[A-Za-z0-9_-]+/g, "[redacted]");
+}
+
 export function createRunService(input: {
   repoRoot: string;
   dataDir: string;
   controlPlaneUrl: string;
   sharedBundleVersion: string;
   provider: SandboxProvider;
+  createProvider?: (providerName: SandboxProvider["name"]) => SandboxProvider;
   store: JsonStore;
 }) {
   const running = new Map<string, Promise<Run>>();
@@ -70,7 +89,12 @@ export function createRunService(input: {
     }
   }
 
-  async function executeRun(run: Run, wakeEvent: RuntimeWakePayload["wakeEvent"], task: Task | undefined): Promise<Run> {
+  async function executeRun(
+    run: Run,
+    wakeEvent: RuntimeWakePayload["wakeEvent"],
+    task: Task | undefined,
+    provider: SandboxProvider,
+  ): Promise<Run> {
     let currentRun: Run = { ...run, status: "starting_sandbox", startedAt: nowIso() };
     await input.store.updateRun(currentRun);
 
@@ -90,7 +114,7 @@ export function createRunService(input: {
 
     let handle;
     try {
-      handle = await input.provider.startRun({
+      handle = await provider.startRun({
         runId: run.id,
         agentId: run.agentId,
         workspaceId: run.workspaceId,
@@ -101,7 +125,7 @@ export function createRunService(input: {
         wakePath: fs.wakePath,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatErrorMessage(error);
       await recordEvent({ type: "run_finished", runId: run.id, timestamp: nowIso(), status: "failed", error: message });
       currentRun = { ...currentRun, status: "failed", finishedAt: nowIso(), error: message };
       await input.store.updateRun(currentRun);
@@ -142,7 +166,7 @@ export function createRunService(input: {
 
     try {
       let runtimeFinish: Extract<RunEvent, { type: "run_finished" }> | undefined;
-      for await (const event of input.provider.exec({ handle, payload })) {
+      for await (const event of provider.exec({ handle, payload })) {
         await recordEvent(event);
         if (event.type === "run_finished") {
           runtimeFinish = event;
@@ -155,11 +179,11 @@ export function createRunService(input: {
         await input.store.updateRun(currentRun);
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatErrorMessage(error);
       await recordEvent({ type: "run_finished", runId: run.id, timestamp: nowIso(), status: "failed", error: message });
       await markRunFailed(message);
     } finally {
-      await input.provider.stop(handle);
+      await provider.stop(handle);
       await recordEvent({ type: "sandbox_stopped", runId: run.id, timestamp: nowIso(), sandboxId: handle.sandboxId });
     }
 
@@ -186,13 +210,14 @@ export function createRunService(input: {
     await input.store.insertWakeEvent(wakeEvent);
 
     const task = await createTaskForWake(wakeEvent.id, request);
+    const provider = request.sandboxProvider ? (input.createProvider?.(request.sandboxProvider) ?? input.provider) : input.provider;
     const run: Run = {
       id: createId("run"),
       wakeEventId: wakeEvent.id,
       agentId: request.agentId,
       workspaceId: request.workspaceId,
       taskId: task.id,
-      sandboxProvider: input.provider.name,
+      sandboxProvider: provider.name,
       sharedBundleVersion: input.sharedBundleVersion,
       status: "queued",
     };
@@ -200,7 +225,7 @@ export function createRunService(input: {
     await recordEvent({ type: "wake_received", runId: run.id, timestamp: nowIso(), message: request.message });
     await recordEvent({ type: "run_created", runId: run.id, timestamp: nowIso() });
 
-    const promise = executeRun(run, wakeEvent, task);
+    const promise = executeRun(run, wakeEvent, task, provider);
     running.set(run.id, promise);
     promise.finally(() => running.delete(run.id)).catch(() => undefined);
 

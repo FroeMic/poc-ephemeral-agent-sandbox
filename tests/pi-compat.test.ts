@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { readConfig } from "../apps/control-plane/src/config.js";
+import { remotePiRuntimeSource } from "../packages/sandbox/src/daytona-provider.js";
 
 type PiCodingAgent = {
   AuthStorage: {
@@ -32,4 +33,11 @@ test("default Pi model exists in the installed Pi model registry", async () => {
   const registry = ModelRegistry.inMemory(AuthStorage.inMemory());
 
   expect(registry.find(provider, modelId)).toBeDefined();
+});
+
+test("Pi runtime stores auth and sessions under the provider supplied agent home", () => {
+  const source = remotePiRuntimeSource({ mode: "pi", pi: { model: "openai/gpt-4o-mini", thinkingLevel: "low" } });
+
+  expect(source).toContain('const piHome = path.join(agentHomePath, "pi");');
+  expect(source).not.toContain('const piHome = "/agent-home/pi";');
 });

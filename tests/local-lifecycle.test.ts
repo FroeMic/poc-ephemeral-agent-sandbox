@@ -182,6 +182,38 @@ test("returns a completed chat turn with run events", async () => {
   expect(turn.events.map((event) => event.type)).toContain("run_finished");
 });
 
+test("uses the request-selected sandbox provider for a chat turn", async () => {
+  const dataDir = await makeTempDir();
+  const store = await JsonStore.create(path.join(dataDir, "store.json"));
+  const localProvider = new LocalSandboxProvider({ repoRoot: process.cwd() });
+  const daytonaProvider = new FailedEventSandboxProvider();
+  const requestedProviders: string[] = [];
+  const service = createRunService({
+    repoRoot: process.cwd(),
+    dataDir,
+    controlPlaneUrl: "http://127.0.0.1:3000",
+    sharedBundleVersion: "v1",
+    provider: localProvider,
+    createProvider: (name) => {
+      requestedProviders.push(name);
+      return name === "daytona" ? daytonaProvider : localProvider;
+    },
+    store,
+  });
+
+  const turn = await service.chatTurn({
+    source: "chat",
+    agentId: "support-agent",
+    workspaceId: "support-workspace",
+    sandboxProvider: "daytona",
+    message: "use daytona",
+  });
+
+  expect(requestedProviders).toEqual(["daytona"]);
+  expect(turn.run.sandboxProvider).toBe("daytona");
+  expect(turn.events).toContainEqual(expect.objectContaining({ type: "sandbox_started", provider: "daytona" }));
+});
+
 test("stops the sandbox and records failure events when runtime execution fails", async () => {
   const dataDir = await makeTempDir();
   const store = await JsonStore.create(path.join(dataDir, "store.json"));
@@ -245,6 +277,43 @@ test("records a failed run when sandbox startup fails before a handle exists", a
       expect.objectContaining({ type: "run_finished", status: "failed", error: "sandbox create exploded" }),
     ]),
   );
+});
+
+test("records useful details when sandbox startup throws a plain object", async () => {
+  class ObjectThrowingProvider implements SandboxProvider {
+    readonly name = "blaxel" as const;
+
+    async startRun(_input: StartRunInput): Promise<SandboxHandle> {
+      throw { message: "workspace is required", status: 401 };
+    }
+
+    async *exec(_input: ExecInput) {}
+
+    async stop(_handle: SandboxHandle): Promise<void> {}
+  }
+
+  const dataDir = await makeTempDir();
+  const store = await JsonStore.create(path.join(dataDir, "store.json"));
+  const service = createRunService({
+    repoRoot: process.cwd(),
+    dataDir,
+    controlPlaneUrl: "http://127.0.0.1:3000",
+    sharedBundleVersion: "v1",
+    provider: new ObjectThrowingProvider(),
+    store,
+  });
+
+  const wake = await service.wake({
+    source: "api",
+    agentId: "agent-main",
+    workspaceId: "workspace-demo",
+    message: "This sandbox should fail with a useful object error",
+  });
+  const completed = await service.waitForRun(wake.runId);
+
+  expect(completed.status).toBe("failed");
+  expect(completed.error).toContain("workspace is required");
+  expect(completed.error).not.toBe("[object Object]");
 });
 
 test("marks the run failed when the runtime emits a failed finish event", async () => {

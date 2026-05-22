@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 export const wakeSourceSchema = z.enum(["api", "chat", "slack", "email", "paperplane", "paperclip", "cron", "task_event"]);
 export type WakeSource = z.infer<typeof wakeSourceSchema>;
 
-export const sandboxProviderNameSchema = z.enum(["local", "daytona", "e2b"]);
+export const sandboxProviderNameSchema = z.enum(["local", "daytona", "e2b", "blaxel"]);
 export type SandboxProviderName = z.infer<typeof sandboxProviderNameSchema>;
 
 export const taskStatusSchema = z.enum(["todo", "in_progress", "blocked", "done"]);
@@ -24,6 +24,7 @@ export const wakeRequestSchema = z.object({
   source: wakeSourceSchema.default("api"),
   agentId: idSegmentSchema,
   workspaceId: idSegmentSchema,
+  sandboxProvider: sandboxProviderNameSchema.optional(),
   message: z.string().min(1),
   taskId: z.string().min(1).optional(),
   conversationId: z.string().min(1).optional(),

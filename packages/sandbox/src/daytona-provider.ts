@@ -68,12 +68,12 @@ type DaytonaHandle = SandboxHandle & {
   localSharedPath: string;
 };
 
-const REMOTE_AGENT_HOME = "/agent-home";
-const REMOTE_WORKSPACE = "/workspace";
-const REMOTE_SHARED = "/agentruntime/shared";
-const REMOTE_HARNESS = "/agentruntime/harness";
-const REMOTE_RUN = "/run";
-const REMOTE_WAKE = "/run/wake.json";
+export const REMOTE_AGENT_HOME = "/agent-home";
+export const REMOTE_WORKSPACE = "/workspace";
+export const REMOTE_SHARED = "/agentruntime/shared";
+export const REMOTE_HARNESS = "/agentruntime/harness";
+export const REMOTE_RUN = "/run";
+export const REMOTE_WAKE = "/run/wake.json";
 const REMOTE_RUNTIME_ENV = "/run/runtime-env.sh";
 const DEFAULT_VOLUME_NAME = "poc-ephemeral-agent-sandbox";
 const DEFAULT_IMAGE = "node:22-bookworm";
@@ -86,7 +86,7 @@ const DEFAULT_AGENT_RUNTIME: AgentRuntimeConfig = {
   },
 };
 
-function shellQuote(value: string): string {
+export function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
@@ -191,11 +191,11 @@ function createJsonlEventParser(runId: string) {
   };
 }
 
-function parseJsonlEvents(output: string, runId: string): RunEvent[] {
+export function parseJsonlEvents(output: string, runId: string): RunEvent[] {
   return parseJsonlLines(output.split(/\r?\n/), runId);
 }
 
-function remoteRuntimeSource() {
+export function remoteRuntimeSource() {
   return String.raw`import { appendFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -253,7 +253,7 @@ emit({ type: "run_finished", runId: run.id, timestamp: nowIso(), status: "succee
 `;
 }
 
-function remotePiRuntimeSource(config: AgentRuntimeConfig) {
+export function remotePiRuntimeSource(config: AgentRuntimeConfig) {
   return String.raw`import { appendFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { AuthStorage, createAgentSession, ModelRegistry, SessionManager } from "@earendil-works/pi-coding-agent";
@@ -334,7 +334,7 @@ async function appendDurableText(filePath, text) {
 const payloadPath = process.argv[2] || "/run/wake.json";
 const payload = JSON.parse(await readFile(payloadPath, "utf8"));
 const { run, wakeEvent, agentHomePath, workspacePath, sharedPath } = payload;
-const piHome = "/agent-home/pi";
+const piHome = path.join(agentHomePath, "pi");
 const workspaceSessionDir = path.join(piHome, "sessions", run.workspaceId);
 const scratchSessionDir = path.join("/tmp", "pi-sessions", run.workspaceId);
 
@@ -387,10 +387,10 @@ session.subscribe((event) => {
 });
 
 const prompt = [
-  "You are running as a just-in-time agent inside an ephemeral Daytona sandbox.",
+  "You are running as a just-in-time agent inside an ephemeral sandbox.",
   "",
-  "Use /workspace as the durable business workspace.",
-  "Use /agent-home as durable agent state.",
+  "Use " + workspacePath + " as the durable business workspace.",
+  "Use " + agentHomePath + " as durable agent state.",
   "",
   "Agent identity:",
   identity,
@@ -442,7 +442,7 @@ emit({ type: "run_finished", runId: run.id, timestamp: nowIso(), status: "succee
 `;
 }
 
-function remotePiPackageJson() {
+export function remotePiPackageJson() {
   return `${JSON.stringify(
     {
       type: "module",
@@ -455,7 +455,7 @@ function remotePiPackageJson() {
   )}\n`;
 }
 
-function runtimeCommandEnv(): Record<string, string> {
+export function runtimeCommandEnv(): Record<string, string> {
   const names = [
     "ANTHROPIC_API_KEY",
     "OPENAI_API_KEY",
@@ -489,7 +489,7 @@ function supportsSessionStreaming(process: DaytonaSandboxLike["process"]) {
   );
 }
 
-function runtimeCommandEnvSource() {
+export function runtimeCommandEnvSource() {
   return `${Object.entries(runtimeCommandEnv())
     .map(([key, value]) => `export ${key}=${shellQuote(value)}`)
     .join("\n")}\n`;
@@ -499,7 +499,7 @@ function withShellCwdAndEnvFile(command: string, cwd: string) {
   return `cd ${shellQuote(cwd)} && . ${shellQuote(REMOTE_RUNTIME_ENV)} && ${command}`;
 }
 
-async function listFilesRecursive(root: string): Promise<Array<{ localPath: string; relativePath: string }>> {
+export async function listFilesRecursive(root: string): Promise<Array<{ localPath: string; relativePath: string }>> {
   const entries: Array<{ localPath: string; relativePath: string }> = [];
 
   async function walk(current: string) {
@@ -521,7 +521,7 @@ async function listFilesRecursive(root: string): Promise<Array<{ localPath: stri
   return entries;
 }
 
-function withRemoteRuntimePaths(payload: RuntimeWakePayload): RuntimeWakePayload {
+export function withRemoteRuntimePaths(payload: RuntimeWakePayload): RuntimeWakePayload {
   return {
     ...payload,
     agentHomePath: REMOTE_AGENT_HOME,

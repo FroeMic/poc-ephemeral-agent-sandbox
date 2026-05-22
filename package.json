@@ -10,7 +10,9 @@
     "wake:demo": "node --import tsx scripts/wake-demo.ts",
     "seed:demo": "node --import tsx scripts/seed-demo.ts",
     "snapshot:daytona:pi": "node --import tsx scripts/create-daytona-pi-snapshot.ts",
-    "smoke:daytona:pi": "node --import tsx scripts/smoke-daytona-pi.ts"
+    "template:e2b:pi-archil": "node --import tsx scripts/e2b-pi-archil-template.ts",
+    "smoke:daytona:pi": "node --import tsx scripts/smoke-daytona-pi.ts",
+    "bench:chat": "node --import tsx scripts/benchmark-chat-turn.ts"
   },
   "dependencies": {
     "zod": "^3.25.76"

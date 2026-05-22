@@ -19,6 +19,7 @@ export function renderDashboardHtml() {
         margin: 0;
       }
       button,
+      select,
       textarea {
         font: inherit;
       }
@@ -48,6 +49,29 @@ export function renderDashboardHtml() {
       .agent-list {
         display: grid;
         gap: 8px;
+      }
+      .provider-control {
+        display: grid;
+        gap: 6px;
+        margin-bottom: 14px;
+      }
+      .provider-control label {
+        color: #58677a;
+        font-size: 12px;
+        font-weight: 750;
+        text-transform: uppercase;
+      }
+      select {
+        width: 100%;
+        border: 1px solid #c7d2df;
+        border-radius: 8px;
+        color: #182235;
+        background: #ffffff;
+        padding: 9px 10px;
+      }
+      select:disabled {
+        cursor: wait;
+        opacity: 0.7;
       }
       .agent-button {
         width: 100%;
@@ -274,7 +298,16 @@ export function renderDashboardHtml() {
       <aside>
         <div class="brand">
           <h1>Agent Chat</h1>
-          <div class="subtle">Daytona volume-backed sessions</div>
+          <div class="subtle">Provider-backed agent sessions</div>
+        </div>
+        <div class="provider-control">
+          <label for="provider-select">Provider</label>
+          <select id="provider-select">
+            <option value="local">Local</option>
+            <option value="daytona">Daytona</option>
+            <option value="e2b">E2B</option>
+            <option value="blaxel">Blaxel</option>
+          </select>
         </div>
         <div class="agent-list" id="agent-list"></div>
       </aside>
@@ -319,7 +352,9 @@ export function renderDashboardHtml() {
       ];
 
       const storageKey = "poc-agent-chat-transcripts-v1";
+      const providerStorageKey = "poc-agent-chat-provider-v1";
       const agentListEl = document.querySelector("#agent-list");
+      const providerSelect = document.querySelector("#provider-select");
       const agentTitleEl = document.querySelector("#agent-title");
       const agentStorageEl = document.querySelector("#agent-storage");
       const messagesEl = document.querySelector("#messages");
@@ -333,6 +368,8 @@ export function renderDashboardHtml() {
       const clearButton = document.querySelector("#clear-chat");
 
       let activeAgent = agents[0];
+      let activeProvider = localStorage.getItem(providerStorageKey) || "local";
+      providerSelect.value = activeProvider;
       let transcripts = loadTranscripts();
       let isSubmitting = false;
 
@@ -382,7 +419,7 @@ export function renderDashboardHtml() {
         if (messages.length === 0) {
           const empty = document.createElement("div");
           empty.className = "empty";
-          empty.textContent = "Start a conversation. Each message wakes a fresh Daytona sandbox and reuses this agent's persisted volume state.";
+          empty.textContent = "Start a conversation. Each message wakes a fresh sandbox with the selected provider and reuses this agent's persisted state.";
           messagesEl.append(empty);
           return;
         }
@@ -425,6 +462,7 @@ export function renderDashboardHtml() {
         isSubmitting = value;
         sendButton.disabled = value;
         input.disabled = value;
+        providerSelect.disabled = value;
         for (const button of agentListEl.querySelectorAll(".agent-button")) {
           button.disabled = value;
         }
@@ -473,6 +511,7 @@ export function renderDashboardHtml() {
               source: "chat",
               agentId: requestAgent.agentId,
               workspaceId: requestAgent.workspaceId,
+              sandboxProvider: activeProvider,
               message: wakeMessage,
               conversationId: requestAgent.agentId,
               metadata: {
@@ -486,6 +525,9 @@ export function renderDashboardHtml() {
           runIdEl.textContent = body.run.id;
           statusEl.textContent = body.run.status || "unknown";
           renderEvents({ events: body.events });
+          if (body.run?.status === "failed") {
+            throw new Error("Run failed: " + (body.run.error || "unknown error"));
+          }
           activeMessages().push({ role: "assistant", content: body.assistantMessage || "Done." });
           saveTranscripts();
           renderMessages();
@@ -503,6 +545,18 @@ export function renderDashboardHtml() {
         transcripts[activeAgent.agentId] = [];
         saveTranscripts();
         renderMessages();
+      });
+
+      providerSelect.addEventListener("change", () => {
+        if (isSubmitting) {
+          providerSelect.value = activeProvider;
+          return;
+        }
+        activeProvider = providerSelect.value;
+        localStorage.setItem(providerStorageKey, activeProvider);
+        statusEl.textContent = "idle";
+        runIdEl.textContent = "none";
+        eventsEl.textContent = "No run yet.";
       });
 
       input.addEventListener("keydown", (event) => {

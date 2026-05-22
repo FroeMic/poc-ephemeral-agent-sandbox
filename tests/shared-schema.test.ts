@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { wakeRequestSchema } from "../packages/shared/src/index.js";
+import { sandboxProviderNameSchema, wakeRequestSchema } from "../packages/shared/src/index.js";
 
 test("accepts agent and workspace ids that are safe disk path segments", () => {
   expect(() =>
@@ -21,6 +21,22 @@ test("accepts chat as a wake source", () => {
   });
 
   expect(request.source).toBe("chat");
+});
+
+test("accepts all benchmark sandbox providers", () => {
+  expect(sandboxProviderNameSchema.options).toEqual(expect.arrayContaining(["local", "daytona", "e2b", "blaxel"]));
+});
+
+test("accepts an explicit sandbox provider on wake requests", () => {
+  const request = wakeRequestSchema.parse({
+    source: "chat",
+    agentId: "sales-agent",
+    workspaceId: "sales-workspace",
+    sandboxProvider: "e2b",
+    message: "hello",
+  });
+
+  expect(request.sandboxProvider).toBe("e2b");
 });
 
 test("rejects agent and workspace ids with path separators or traversal", () => {
