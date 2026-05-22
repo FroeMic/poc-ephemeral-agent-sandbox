@@ -7,6 +7,7 @@ export type AgentRuntimeConfig = {
   pi: {
     model: string;
     thinkingLevel: string;
+    installDeps?: boolean;
   };
 };
 

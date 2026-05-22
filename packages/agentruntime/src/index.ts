@@ -28,6 +28,14 @@ export async function runRuntime(payload: RuntimeWakePayload, emit: (event: RunE
     data: `Loaded identity (${identity.length} chars), workspace instructions (${workspaceInstructions.length} chars), shared entries: ${sharedEntries.join(", ")}`,
   });
 
+  const assistantMessage = `Handled your message for ${run.agentId}: ${wakeEvent.message}`;
+  await emit({
+    type: "assistant_message",
+    runId: run.id,
+    timestamp: nowIso(),
+    content: assistantMessage,
+  });
+
   await appendFile(
     path.join(agentHomePath, "MEMORY.md"),
     `\n## ${nowIso()} ${run.id}\n\nHandled wake: ${wakeEvent.message}\n`,

@@ -124,6 +124,14 @@ function envInt(name: string, fallback: number) {
   return parsed;
 }
 
+function envBool(name: string, fallback: boolean) {
+  const raw = process.env[name]?.trim().toLowerCase();
+  if (!raw) return fallback;
+  if (["1", "true", "yes", "on"].includes(raw)) return true;
+  if (["0", "false", "no", "off"].includes(raw)) return false;
+  throw new Error(`Unsupported ${name}: ${process.env[name]}`);
+}
+
 function runFailureDetails(store: JsonStore, runId: string) {
   const events = store.listRunEvents(runId);
   const recentEvents = events.slice(-20);
@@ -160,6 +168,7 @@ async function main() {
       pi: {
         model,
         thinkingLevel: process.env.PI_THINKING_LEVEL?.trim() || "medium",
+        installDeps: envBool("PI_INSTALL_DEPS", true),
       },
     } satisfies AgentRuntimeConfig,
   });

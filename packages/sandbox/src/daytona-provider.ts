@@ -224,6 +224,9 @@ emit({
   data: "Loaded identity (" + identity.length + " chars), workspace instructions (" + workspaceInstructions.length + " chars), shared entries: " + sharedEntries.join(", "),
 });
 
+const assistantMessage = "Handled your message for " + run.agentId + ": " + wakeEvent.message;
+emit({ type: "assistant_message", runId: run.id, timestamp: nowIso(), content: assistantMessage });
+
 await appendFile(path.join(agentHomePath, "MEMORY.md"), "\n## " + nowIso() + " " + run.id + "\n\nHandled wake: " + wakeEvent.message + "\n", "utf8");
 emit({ type: "file_changed", runId: run.id, timestamp: nowIso(), path: path.join(agentHomePath, "MEMORY.md") });
 
@@ -411,6 +414,7 @@ await copyTree(scratchSessionDir, workspaceSessionDir);
 const lastAssistant = [...session.messages].reverse().find((message) => message.role === "assistant");
 const responseText = lastAssistant ? messageContentToText(lastAssistant.content) : "Pi completed without an assistant text response.";
 
+emit({ type: "assistant_message", runId: run.id, timestamp: nowIso(), content: responseText });
 emit({ type: "stdout", runId: run.id, timestamp: nowIso(), data: responseText });
 
 const notePath = path.join(workspacePath, "notes", run.id + ".md");
@@ -632,7 +636,7 @@ export class DaytonaSandboxProvider implements SandboxProvider {
     if (!handle.sandbox) throw new Error("Daytona handle is missing sandbox instance");
 
     await this.prepareRemoteRuntime(handle.sandbox, input.payload, handle.localSharedPath);
-    if (this.agentRuntime.mode === "pi") {
+    if (this.agentRuntime.mode === "pi" && this.agentRuntime.pi.installDeps !== false) {
       const installResult = await handle.sandbox.process.executeCommand(
         "npm install --omit=dev",
         REMOTE_HARNESS,

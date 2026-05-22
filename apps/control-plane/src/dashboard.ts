@@ -4,13 +4,13 @@ export function renderDashboardHtml() {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Ephemeral Sandbox Control Plane</title>
+    <title>Agent Chat</title>
     <style>
       :root {
         color-scheme: light;
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: #f5f7fb;
-        color: #172033;
+        background: #eef2f7;
+        color: #182235;
       }
       * {
         box-sizing: border-box;
@@ -18,92 +18,207 @@ export function renderDashboardHtml() {
       body {
         margin: 0;
       }
-      main {
-        max-width: 1120px;
-        margin: 0 auto;
-        padding: 32px 20px;
+      button,
+      textarea {
+        font: inherit;
       }
-      header {
-        display: flex;
-        align-items: end;
-        justify-content: space-between;
-        gap: 16px;
-        margin-bottom: 24px;
+      main {
+        display: grid;
+        grid-template-columns: 260px minmax(0, 1fr) minmax(280px, 360px);
+        min-height: 100vh;
+      }
+      aside {
+        border-right: 1px solid #cfd8e3;
+        background: #ffffff;
+        padding: 18px;
+      }
+      .brand {
+        margin-bottom: 18px;
       }
       h1 {
         margin: 0;
-        font-size: 30px;
-        line-height: 1.15;
+        font-size: 22px;
+        line-height: 1.2;
         letter-spacing: 0;
       }
-      p {
-        margin: 8px 0 0;
-        color: #526071;
-      }
-      .status {
-        border: 1px solid #cfd8e3;
-        border-radius: 8px;
-        padding: 10px 12px;
-        background: #ffffff;
-        color: #286148;
-        font-weight: 650;
-      }
-      .grid {
-        display: grid;
-        grid-template-columns: minmax(280px, 380px) 1fr;
-        gap: 20px;
-      }
-      section {
-        min-width: 0;
-      }
-      form,
-      .panel {
-        background: #ffffff;
-        border: 1px solid #d8e0ea;
-        border-radius: 8px;
-        padding: 18px;
-      }
-      label {
-        display: grid;
-        gap: 6px;
-        margin-bottom: 14px;
+      .subtle {
+        color: #657386;
         font-size: 13px;
-        font-weight: 650;
-        color: #38465a;
       }
-      input,
-      textarea {
+      .agent-list {
+        display: grid;
+        gap: 8px;
+      }
+      .agent-button {
         width: 100%;
-        border: 1px solid #cbd5e1;
-        border-radius: 6px;
-        padding: 10px 11px;
-        font: inherit;
-        color: #172033;
-        background: #ffffff;
-      }
-      textarea {
-        min-height: 112px;
-        resize: vertical;
-      }
-      button {
-        width: 100%;
-        border: 0;
-        border-radius: 6px;
-        padding: 11px 12px;
-        background: #1d4f91;
-        color: #ffffff;
-        font: inherit;
-        font-weight: 700;
+        border: 1px solid #d4deea;
+        border-radius: 8px;
+        background: #f8fafc;
+        color: #182235;
         cursor: pointer;
+        padding: 11px;
+        text-align: left;
       }
-      button:disabled {
-        opacity: 0.6;
+      .agent-button.active {
+        border-color: #0f766e;
+        background: #e8f5f2;
+      }
+      .agent-button:disabled {
         cursor: wait;
+        opacity: 0.7;
+      }
+      .agent-label {
+        display: block;
+        font-weight: 750;
+      }
+      .agent-meta {
+        display: block;
+        margin-top: 4px;
+        overflow-wrap: anywhere;
+      }
+      .chat {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        min-width: 0;
+        background: #f8fafc;
+      }
+      .chat-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        border-bottom: 1px solid #d7e0eb;
+        background: #ffffff;
+        padding: 16px 20px;
       }
       h2 {
-        margin: 0 0 12px;
-        font-size: 17px;
+        margin: 0;
+        font-size: 18px;
+        line-height: 1.25;
         letter-spacing: 0;
+      }
+      .status {
+        border: 1px solid #cdd7e4;
+        border-radius: 999px;
+        color: #285044;
+        background: #ffffff;
+        font-size: 13px;
+        font-weight: 700;
+        padding: 6px 10px;
+        white-space: nowrap;
+      }
+      .notice {
+        display: none;
+        border-bottom: 1px solid #f0c6a2;
+        background: #fff7ed;
+        color: #8a4b16;
+        padding: 10px 20px;
+        font-weight: 650;
+      }
+      .notice.visible {
+        display: block;
+      }
+      .messages {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        overflow: auto;
+        padding: 20px;
+      }
+      .empty {
+        color: #657386;
+        margin: auto;
+        max-width: 440px;
+        text-align: center;
+      }
+      .message {
+        max-width: min(760px, 88%);
+        border: 1px solid #dbe3ee;
+        border-radius: 8px;
+        background: #ffffff;
+        padding: 12px 13px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        line-height: 1.45;
+      }
+      .message.user {
+        align-self: flex-end;
+        border-color: #b8cee8;
+        background: #eaf2fb;
+      }
+      .message.assistant {
+        align-self: flex-start;
+      }
+      .message.error {
+        align-self: flex-start;
+        border-color: #efb7b7;
+        background: #fff1f1;
+        color: #8a2d2d;
+      }
+      .role {
+        display: block;
+        margin-bottom: 5px;
+        color: #58677a;
+        font-size: 12px;
+        font-weight: 750;
+        text-transform: uppercase;
+      }
+      form {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 112px;
+        gap: 10px;
+        border-top: 1px solid #d7e0eb;
+        background: #ffffff;
+        padding: 14px 20px 18px;
+      }
+      textarea {
+        width: 100%;
+        min-height: 46px;
+        max-height: 170px;
+        resize: vertical;
+        border: 1px solid #c7d2df;
+        border-radius: 8px;
+        color: #182235;
+        background: #ffffff;
+        padding: 11px 12px;
+      }
+      .send-button,
+      .clear-button {
+        border: 0;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 750;
+      }
+      .send-button {
+        color: #ffffff;
+        background: #0f766e;
+      }
+      .send-button:disabled {
+        cursor: wait;
+        opacity: 0.62;
+      }
+      .debug {
+        border-left: 1px solid #cfd8e3;
+        background: #ffffff;
+        padding: 18px;
+        min-width: 0;
+      }
+      .debug-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+      .chat-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .clear-button {
+        color: #2d3a4d;
+        background: #e8edf4;
+        padding: 8px 10px;
       }
       code {
         background: #eef2f7;
@@ -112,136 +227,292 @@ export function renderDashboardHtml() {
       }
       pre {
         min-height: 420px;
-        max-height: 68vh;
+        max-height: calc(100vh - 130px);
         overflow: auto;
         margin: 0;
-        padding: 14px;
-        border-radius: 6px;
+        padding: 13px;
+        border-radius: 8px;
         background: #101828;
-        color: #d7e3f4;
-        font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        color: #d9e5f5;
+        font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
         white-space: pre-wrap;
         word-break: break-word;
       }
-      .meta {
-        display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-        margin-bottom: 12px;
-        color: #526071;
-        font-size: 13px;
+      @media (max-width: 980px) {
+        main {
+          grid-template-columns: 220px minmax(0, 1fr);
+        }
+        .debug {
+          display: none;
+        }
       }
-      @media (max-width: 760px) {
-        header,
-        .grid {
+      @media (max-width: 720px) {
+        main {
           display: block;
         }
-        .status {
-          margin-top: 14px;
+        aside {
+          border-right: 0;
+          border-bottom: 1px solid #cfd8e3;
+        }
+        .agent-list {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        .chat {
+          min-height: calc(100vh - 188px);
         }
         form {
-          margin-bottom: 20px;
+          grid-template-columns: 1fr;
+        }
+        .send-button {
+          min-height: 42px;
         }
       }
     </style>
   </head>
   <body>
     <main>
-      <header>
-        <div>
-          <h1>Ephemeral Sandbox Control Plane</h1>
-          <p>Trigger a local sandbox run, persist workspace state, and inspect typed run events.</p>
+      <aside>
+        <div class="brand">
+          <h1>Agent Chat</h1>
+          <div class="subtle">Daytona volume-backed sessions</div>
         </div>
-        <div class="status">local provider online</div>
-      </header>
+        <div class="agent-list" id="agent-list"></div>
+      </aside>
 
-      <div class="grid">
-        <section>
-          <form id="wake-form">
-            <h2>Create Wake</h2>
-            <label>
-              Agent ID
-              <input name="agentId" value="agent-main" autocomplete="off" />
-            </label>
-            <label>
-              Workspace ID
-              <input name="workspaceId" value="workspace-demo" autocomplete="off" />
-            </label>
-            <label>
-              Message
-              <textarea name="message">Create a durable note from the browser dashboard.</textarea>
-            </label>
-            <button type="submit">POST /wake</button>
-          </form>
-        </section>
-
-        <section class="panel">
-          <h2>Run Events</h2>
-          <div class="meta">
-            <span>Last run: <code id="run-id">none</code></span>
-            <span>Status: <code id="run-status">idle</code></span>
+      <section class="chat">
+        <header class="chat-header">
+          <div>
+            <h2 id="agent-title">Sales</h2>
+            <div class="subtle" id="agent-storage">sales-agent / sales-workspace</div>
           </div>
-          <pre id="events">No run yet.</pre>
-        </section>
-      </div>
+          <div class="chat-actions">
+            <div class="status" id="run-status">idle</div>
+            <button class="clear-button" id="clear-chat" type="button">Clear</button>
+          </div>
+        </header>
+
+        <div class="notice" id="notice"></div>
+        <div class="messages" id="messages"></div>
+
+        <form id="chat-form">
+          <textarea id="message-input" name="message" placeholder="Message this agent" autocomplete="off"></textarea>
+          <button class="send-button" type="submit">Send</button>
+        </form>
+      </section>
+
+      <section class="debug">
+        <div class="debug-header">
+          <div>
+            <h2>Run Events</h2>
+            <div class="subtle">Last run: <code id="run-id">none</code></div>
+          </div>
+        </div>
+        <pre id="events">No run yet.</pre>
+      </section>
     </main>
 
     <script>
-      const form = document.querySelector("#wake-form");
+      const agents = [
+        { label: "Sales", agentId: "sales-agent", workspaceId: "sales-workspace" },
+        { label: "Support", agentId: "support-agent", workspaceId: "support-workspace" },
+        { label: "Ops", agentId: "ops-agent", workspaceId: "ops-workspace" },
+      ];
+
+      const storageKey = "poc-agent-chat-transcripts-v1";
+      const agentListEl = document.querySelector("#agent-list");
+      const agentTitleEl = document.querySelector("#agent-title");
+      const agentStorageEl = document.querySelector("#agent-storage");
+      const messagesEl = document.querySelector("#messages");
+      const noticeEl = document.querySelector("#notice");
       const eventsEl = document.querySelector("#events");
       const runIdEl = document.querySelector("#run-id");
       const statusEl = document.querySelector("#run-status");
-      const button = form.querySelector("button");
+      const form = document.querySelector("#chat-form");
+      const input = document.querySelector("#message-input");
+      const sendButton = form.querySelector(".send-button");
+      const clearButton = document.querySelector("#clear-chat");
 
-      function render(value) {
+      let activeAgent = agents[0];
+      let transcripts = loadTranscripts();
+      let isSubmitting = false;
+
+      function loadTranscripts() {
+        try {
+          const parsed = JSON.parse(localStorage.getItem(storageKey) || "{}");
+          return parsed && typeof parsed === "object" ? parsed : {};
+        } catch {
+          return {};
+        }
+      }
+
+      function saveTranscripts() {
+        localStorage.setItem(storageKey, JSON.stringify(transcripts));
+      }
+
+      function activeMessages() {
+        transcripts[activeAgent.agentId] ||= [];
+        return transcripts[activeAgent.agentId];
+      }
+
+      function renderAgents() {
+        agentListEl.textContent = "";
+        for (const agent of agents) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "agent-button" + (agent.agentId === activeAgent.agentId ? " active" : "");
+          button.disabled = isSubmitting;
+          button.innerHTML = '<span class="agent-label"></span><span class="agent-meta subtle"></span>';
+          button.querySelector(".agent-label").textContent = agent.label;
+          button.querySelector(".agent-meta").textContent = agent.agentId + " / " + agent.workspaceId;
+          button.addEventListener("click", () => {
+            if (isSubmitting) return;
+            activeAgent = agent;
+            statusEl.textContent = "idle";
+            runIdEl.textContent = "none";
+            eventsEl.textContent = "No run yet.";
+            render();
+          });
+          agentListEl.append(button);
+        }
+      }
+
+      function renderMessages() {
+        messagesEl.textContent = "";
+        const messages = activeMessages();
+        if (messages.length === 0) {
+          const empty = document.createElement("div");
+          empty.className = "empty";
+          empty.textContent = "Start a conversation. Each message wakes a fresh Daytona sandbox and reuses this agent's persisted volume state.";
+          messagesEl.append(empty);
+          return;
+        }
+        for (const message of messages) {
+          const item = document.createElement("div");
+          item.className = "message " + message.role;
+          const role = document.createElement("span");
+          role.className = "role";
+          role.textContent = message.role;
+          const content = document.createElement("span");
+          content.textContent = message.content;
+          item.append(role, content);
+          messagesEl.append(item);
+        }
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+
+      function render() {
+        renderAgents();
+        agentTitleEl.textContent = activeAgent.label;
+        agentStorageEl.textContent = activeAgent.agentId + " / " + activeAgent.workspaceId;
+        renderMessages();
+      }
+
+      function renderEvents(value) {
         eventsEl.textContent = JSON.stringify(value, null, 2);
       }
 
-      async function pollRun(runId, eventStreamUrl) {
-        for (let attempt = 0; attempt < 80; attempt += 1) {
-          const [runResponse, eventsResponse] = await Promise.all([
-            fetch("/runs/" + runId),
-            fetch("/runs/" + runId + "/events"),
-          ]);
-          const run = await runResponse.json();
-          const events = await eventsResponse.json();
-          statusEl.textContent = run.status || "unknown";
-          render(events);
-          if (run.status === "succeeded" || run.status === "failed" || run.status === "cancelled") return;
-          await new Promise((resolve) => setTimeout(resolve, 250));
+      function showNotice(message) {
+        noticeEl.textContent = message;
+        noticeEl.classList.add("visible");
+      }
+
+      function clearNotice() {
+        noticeEl.textContent = "";
+        noticeEl.classList.remove("visible");
+      }
+
+      function setSubmitting(value) {
+        isSubmitting = value;
+        sendButton.disabled = value;
+        input.disabled = value;
+        for (const button of agentListEl.querySelectorAll(".agent-button")) {
+          button.disabled = value;
         }
-        const eventsResponse = await fetch(eventStreamUrl);
-        render(await eventsResponse.json());
+      }
+
+      function buildWakeMessage(userText) {
+        const previous = activeMessages()
+          .slice(-12)
+          .map((message) => message.role.toUpperCase() + ": " + message.content)
+          .join("\n\n");
+        return [
+          "Conversation so far:",
+          previous || "(no previous turns)",
+          "",
+          "Current user message:",
+          userText,
+          "",
+          "Reply conversationally to the current user message. Use the persisted /agent-home and /workspace state when it helps.",
+        ].join("\n");
       }
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
-        button.disabled = true;
-        statusEl.textContent = "submitting";
-        eventsEl.textContent = "Creating wake...";
+        if (isSubmitting) return;
+        const userText = input.value.trim();
+        if (!userText) return;
+
+        const requestAgent = activeAgent;
+        const messages = activeMessages();
+        const wakeMessage = buildWakeMessage(userText);
+        clearNotice();
+        messages.push({ role: "user", content: userText });
+        saveTranscripts();
+        input.value = "";
+        renderMessages();
+
+        setSubmitting(true);
+        statusEl.textContent = "running";
+        eventsEl.textContent = "Running chat turn...";
+
         try {
-          const formData = new FormData(form);
-          const response = await fetch("/wake", {
+          const response = await fetch("/chat-turn", {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
-              source: "api",
-              agentId: String(formData.get("agentId")),
-              workspaceId: String(formData.get("workspaceId")),
-              message: String(formData.get("message")),
+              source: "chat",
+              agentId: requestAgent.agentId,
+              workspaceId: requestAgent.workspaceId,
+              message: wakeMessage,
+              conversationId: requestAgent.agentId,
+              metadata: {
+                ui: "agent-chat",
+                userMessage: userText,
+              },
             }),
           });
           const body = await response.json();
-          if (!response.ok) throw new Error(body.error || "wake failed");
-          runIdEl.textContent = body.runId;
-          await pollRun(body.runId, body.eventStreamUrl);
+          if (!response.ok) throw new Error(body.error || "chat turn failed");
+          runIdEl.textContent = body.run.id;
+          statusEl.textContent = body.run.status || "unknown";
+          renderEvents({ events: body.events });
+          activeMessages().push({ role: "assistant", content: body.assistantMessage || "Done." });
+          saveTranscripts();
+          renderMessages();
         } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          showNotice("Transport error: " + message);
           statusEl.textContent = "error";
-          render({ error: error instanceof Error ? error.message : String(error) });
         } finally {
-          button.disabled = false;
+          setSubmitting(false);
+          input.focus();
         }
       });
+
+      clearButton.addEventListener("click", () => {
+        transcripts[activeAgent.agentId] = [];
+        saveTranscripts();
+        renderMessages();
+      });
+
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          form.requestSubmit();
+        }
+      });
+
+      render();
     </script>
   </body>
 </html>`;

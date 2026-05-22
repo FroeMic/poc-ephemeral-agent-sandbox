@@ -543,6 +543,50 @@ test("prepares Pi dependencies and passes provider API keys to the Daytona comma
   }
 });
 
+test("skips Pi dependency installation when dependencies are preinstalled", async () => {
+  const root = await makeTempDir();
+  const sharedPath = path.join(root, "shared");
+  await mkdir(sharedPath, { recursive: true });
+  await writeFile(path.join(sharedPath, "manifest.json"), '{"version":"v1"}\n', "utf8");
+
+  const fake = new FakeDaytona();
+  const provider = new DaytonaSandboxProvider({
+    client: fake,
+    volumeName: "poc-volume",
+    snapshot: "poc-pi-runner",
+    agentRuntime: {
+      mode: "pi",
+      pi: {
+        model: "openai/gpt-5.5",
+        thinkingLevel: "high",
+        installDeps: false,
+      },
+    },
+  });
+  const handle = await provider.startRun({
+    runId: "run-1",
+    agentId: "agent-main",
+    workspaceId: "workspace-demo",
+    agentHomePath: path.join(root, "agent-home"),
+    workspacePath: path.join(root, "workspace"),
+    sharedPath,
+    runPath: path.join(root, "run"),
+    wakePath: path.join(root, "run", "wake.json"),
+  });
+
+  for await (const _event of provider.exec({ handle, payload: payload() })) {
+    // Drain fake output.
+  }
+
+  expect(fake.sandbox.uploads.map((upload) => upload.remotePath)).toContain("/agentruntime/harness/package.json");
+  expect(fake.sandbox.commands.map((entry) => entry.command).join("\n")).not.toContain("npm install");
+  expect(fake.createParams[0]).toEqual(
+    expect.objectContaining({
+      snapshot: "poc-pi-runner",
+    }),
+  );
+});
+
 test("fails before running the Pi harness when dependency installation fails", async () => {
   const root = await makeTempDir();
   const sharedPath = path.join(root, "shared");

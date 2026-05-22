@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 
-export const wakeSourceSchema = z.enum(["api", "slack", "email", "paperplane", "paperclip", "cron", "task_event"]);
+export const wakeSourceSchema = z.enum(["api", "chat", "slack", "email", "paperplane", "paperclip", "cron", "task_event"]);
 export type WakeSource = z.infer<typeof wakeSourceSchema>;
 
 export const sandboxProviderNameSchema = z.enum(["local", "daytona", "e2b"]);
@@ -92,6 +92,7 @@ export type RunEvent =
   | { type: "run_created"; runId: string; timestamp: string }
   | { type: "sandbox_started"; runId: string; timestamp: string; provider: SandboxProviderName; sandboxId: string }
   | { type: "runtime_started"; runId: string; timestamp: string }
+  | { type: "assistant_message"; runId: string; timestamp: string; content: string }
   | { type: "stdout"; runId: string; timestamp: string; data: string }
   | { type: "stderr"; runId: string; timestamp: string; data: string }
   | { type: "file_changed"; runId: string; timestamp: string; path: string }

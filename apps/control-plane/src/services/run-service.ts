@@ -210,6 +210,21 @@ export function createRunService(input: {
     };
   }
 
+  async function chatTurn(rawRequest: unknown) {
+    const wakeResponse = await wake(rawRequest);
+    const run = await waitForRun(wakeResponse.runId);
+    const events = input.store.listRunEvents(wakeResponse.runId);
+    const assistantMessage =
+      [...events].reverse().find((event): event is Extract<RunEvent, { type: "assistant_message" }> => event.type === "assistant_message")
+        ?.content ?? "";
+    return {
+      run,
+      assistantMessage,
+      events,
+      eventStreamUrl: wakeResponse.eventStreamUrl,
+    };
+  }
+
   async function waitForRun(runId: string): Promise<Run> {
     const active = running.get(runId);
     if (active) return active;
@@ -220,6 +235,7 @@ export function createRunService(input: {
 
   return {
     wake,
+    chatTurn,
     waitForRun,
     getRun: (runId: string) => input.store.getRun(runId),
     listRunEvents: (runId: string) => input.store.listRunEvents(runId),

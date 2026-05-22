@@ -17,12 +17,14 @@ test("reads Pi agent runtime settings from the environment", () => {
   process.env.AGENT_RUNTIME_MODE = "pi";
   process.env.PI_MODEL = "openai/gpt-5.5";
   process.env.PI_THINKING_LEVEL = "high";
+  process.env.PI_INSTALL_DEPS = "false";
 
   expect(readConfig().agentRuntime).toEqual({
     mode: "pi",
     pi: {
       model: "openai/gpt-5.5",
       thinkingLevel: "high",
+      installDeps: false,
     },
   });
 });

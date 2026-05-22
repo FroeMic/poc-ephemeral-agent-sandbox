@@ -151,6 +151,37 @@ test("runs the local sandbox lifecycle and preserves workspace state across runs
   expect(events.map((event) => event.type)).toContain("run_finished");
 });
 
+test("returns a completed chat turn with run events", async () => {
+  const dataDir = await makeTempDir();
+  const store = await JsonStore.create(path.join(dataDir, "store.json"));
+  const service = createRunService({
+    repoRoot: process.cwd(),
+    dataDir,
+    controlPlaneUrl: "http://127.0.0.1:3000",
+    sharedBundleVersion: "v1",
+    provider: new LocalSandboxProvider({ repoRoot: process.cwd() }),
+    store,
+  });
+
+  const turn = await service.chatTurn({
+    source: "chat",
+    agentId: "support-agent",
+    workspaceId: "support-workspace",
+    message: "hello from chat",
+  });
+
+  expect(turn.run.agentId).toBe("support-agent");
+  expect(turn.run.status).toBe("succeeded");
+  expect(turn.assistantMessage).toContain("hello from chat");
+  expect(turn.events).toContainEqual(
+    expect.objectContaining({
+      type: "assistant_message",
+      content: expect.stringContaining("hello from chat"),
+    }),
+  );
+  expect(turn.events.map((event) => event.type)).toContain("run_finished");
+});
+
 test("stops the sandbox and records failure events when runtime execution fails", async () => {
   const dataDir = await makeTempDir();
   const store = await JsonStore.create(path.join(dataDir, "store.json"));

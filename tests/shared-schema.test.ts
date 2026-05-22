@@ -12,6 +12,17 @@ test("accepts agent and workspace ids that are safe disk path segments", () => {
   ).not.toThrow();
 });
 
+test("accepts chat as a wake source", () => {
+  const request = wakeRequestSchema.parse({
+    source: "chat",
+    agentId: "sales-agent",
+    workspaceId: "sales-workspace",
+    message: "hello",
+  });
+
+  expect(request.source).toBe("chat");
+});
+
 test("rejects agent and workspace ids with path separators or traversal", () => {
   expect(() =>
     wakeRequestSchema.parse({

@@ -52,12 +52,16 @@ export async function createServer() {
       if (req.method === "GET" && url.pathname === "/api") {
         sendJson(res, 200, {
           name: "poc-ephemeral-agent-sandbox",
-          routes: ["POST /wake", "GET /runs/:runId", "GET /runs/:runId/events", "GET /tasks"],
+          routes: ["POST /wake", "POST /chat-turn", "GET /runs/:runId", "GET /runs/:runId/events", "GET /tasks"],
         });
         return;
       }
       if (req.method === "POST" && url.pathname === "/wake") {
         sendJson(res, 202, await runService.wake(await readBody(req)));
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/chat-turn") {
+        sendJson(res, 200, await runService.chatTurn(await readBody(req)));
         return;
       }
       const runMatch = url.pathname.match(/^\/runs\/([^/]+)$/);

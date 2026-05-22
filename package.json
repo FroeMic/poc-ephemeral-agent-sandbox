@@ -9,6 +9,7 @@
     "test": "vitest run",
     "wake:demo": "node --import tsx scripts/wake-demo.ts",
     "seed:demo": "node --import tsx scripts/seed-demo.ts",
+    "snapshot:daytona:pi": "node --import tsx scripts/create-daytona-pi-snapshot.ts",
     "smoke:daytona:pi": "node --import tsx scripts/smoke-daytona-pi.ts"
   },
   "dependencies": {
