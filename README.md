@@ -165,6 +165,28 @@ export BLAXEL_COMMAND_TIMEOUT_SEC=900
 
 Blaxel uses `BLAXEL_PI_INSTALL_DEPS=true` by default when `AGENT_RUNTIME_MODE=pi`, even if `PI_INSTALL_DEPS=false` is set for an E2B or Daytona baked template. Set `BLAXEL_PI_INSTALL_DEPS=false` only when `BLAXEL_IMAGE` already contains `/agentruntime/harness/node_modules`.
 
+This repo includes a Blaxel sandbox image that bakes the Pi dependency into `/agentruntime/harness/node_modules`, so each turn can skip `npm install --omit=dev`:
+
+```bash
+brew tap blaxel-ai/blaxel
+brew install blaxel
+pnpm image:blaxel:pi
+```
+
+The build script stages `infra/blaxel/pi-sandbox` into `/tmp`, pushes it as `poc-pi-runner-real-template` by default, then updates `.env` with:
+
+```bash
+BLAXEL_IMAGE=sandbox/poc-pi-runner-real-template:latest
+BLAXEL_PI_INSTALL_DEPS=false
+```
+
+Override the build name or timeout if needed:
+
+```bash
+export BLAXEL_PI_IMAGE_NAME=poc-pi-runner-real-template
+export BLAXEL_PI_IMAGE_TIMEOUT=30m
+```
+
 ## Benchmarking Providers
 
 Use the same benchmark command for every provider. It reads `.env`, runs `BENCH_TURNS` sequential chat turns through `POST /chat-turn` semantics, and prints per-turn JSON plus a min/p50/p90/max summary.
@@ -193,6 +215,15 @@ export BENCH_WORKSPACE_ID=bench-workspace
 export BENCH_MESSAGE="Remember this turn and reply in one short sentence."
 export BENCH_KEEP_DATA=true
 ```
+
+For repeatable experiments, prefer scenario files under `benchmarks/scenarios/`:
+
+```bash
+pnpm bench:scenario benchmarks/scenarios/local-mock.json
+pnpm bench:matrix benchmarks/matrix-provider-smoke.json
+```
+
+Scenario results are written to `benchmarks/results/` and include provider, runtime, storage, lifecycle, image/prebuild metadata, samples, and summaries. See `benchmarks/README.md`.
 
 ## Agent Runtime Modes
 

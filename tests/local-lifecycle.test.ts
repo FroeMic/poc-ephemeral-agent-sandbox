@@ -180,6 +180,21 @@ test("returns a completed chat turn with run events", async () => {
     }),
   );
   expect(turn.events.map((event) => event.type)).toContain("run_finished");
+  expect(turn.events).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ type: "phase_timing", provider: "local", phase: "local_materialize", status: "succeeded" }),
+      expect.objectContaining({ type: "phase_timing", provider: "local", phase: "sandbox_acquire", status: "succeeded" }),
+      expect.objectContaining({ type: "phase_timing", provider: "local", phase: "runtime_execute", status: "succeeded" }),
+      expect.objectContaining({ type: "phase_timing", provider: "local", phase: "sandbox_release", status: "succeeded" }),
+      expect.objectContaining({ type: "phase_timing", provider: "local", phase: "total_run", status: "succeeded" }),
+    ]),
+  );
+  for (const event of turn.events) {
+    if (event.type === "phase_timing") {
+      expect(event.durationMs).toEqual(expect.any(Number));
+      expect(event.durationMs).toBeGreaterThanOrEqual(0);
+    }
+  }
 });
 
 test("uses the request-selected sandbox provider for a chat turn", async () => {
@@ -246,6 +261,13 @@ test("stops the sandbox and records failure events when runtime execution fails"
   expect(store.listRunEvents(wake.runId).map((event) => event.type)).toEqual(
     expect.arrayContaining(["sandbox_started", "run_finished", "sandbox_stopped"]),
   );
+  expect(store.listRunEvents(wake.runId)).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ type: "phase_timing", phase: "runtime_execute", status: "failed" }),
+      expect.objectContaining({ type: "phase_timing", phase: "sandbox_release", status: "succeeded" }),
+      expect.objectContaining({ type: "phase_timing", phase: "total_run", status: "failed" }),
+    ]),
+  );
 });
 
 test("records a failed run when sandbox startup fails before a handle exists", async () => {
@@ -274,6 +296,9 @@ test("records a failed run when sandbox startup fails before a handle exists", a
   expect(provider.stopped).toEqual([]);
   expect(store.listRunEvents(wake.runId)).toEqual(
     expect.arrayContaining([
+      expect.objectContaining({ type: "phase_timing", phase: "local_materialize", status: "succeeded" }),
+      expect.objectContaining({ type: "phase_timing", phase: "sandbox_acquire", status: "failed" }),
+      expect.objectContaining({ type: "phase_timing", phase: "total_run", status: "failed" }),
       expect.objectContaining({ type: "run_finished", status: "failed", error: "sandbox create exploded" }),
     ]),
   );

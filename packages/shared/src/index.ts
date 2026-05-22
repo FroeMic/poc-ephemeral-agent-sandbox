@@ -88,19 +88,41 @@ export const runSchema = z.object({
 });
 export type Run = z.infer<typeof runSchema>;
 
-export type RunEvent =
-  | { type: "wake_received"; runId: string; timestamp: string; message: string }
-  | { type: "run_created"; runId: string; timestamp: string }
-  | { type: "sandbox_started"; runId: string; timestamp: string; provider: SandboxProviderName; sandboxId: string }
-  | { type: "runtime_started"; runId: string; timestamp: string }
-  | { type: "assistant_message"; runId: string; timestamp: string; content: string }
-  | { type: "stdout"; runId: string; timestamp: string; data: string }
-  | { type: "stderr"; runId: string; timestamp: string; data: string }
-  | { type: "file_changed"; runId: string; timestamp: string; path: string }
-  | { type: "task_updated"; runId: string; timestamp: string; taskId: string; status: TaskStatus }
-  | { type: "artifact_created"; runId: string; timestamp: string; path: string }
-  | { type: "run_finished"; runId: string; timestamp: string; status: "succeeded" | "failed"; error?: string }
-  | { type: "sandbox_stopped"; runId: string; timestamp: string; sandboxId: string };
+export const phaseTimingStatusSchema = z.enum(["succeeded", "failed"]);
+export type PhaseTimingStatus = z.infer<typeof phaseTimingStatusSchema>;
+
+const baseRunEventSchema = z.object({
+  runId: z.string(),
+  timestamp: z.string(),
+});
+
+export const runEventSchema = z.discriminatedUnion("type", [
+  baseRunEventSchema.extend({ type: z.literal("wake_received"), message: z.string() }),
+  baseRunEventSchema.extend({ type: z.literal("run_created") }),
+  baseRunEventSchema.extend({ type: z.literal("sandbox_started"), provider: sandboxProviderNameSchema, sandboxId: z.string() }),
+  baseRunEventSchema.extend({ type: z.literal("runtime_started") }),
+  baseRunEventSchema.extend({ type: z.literal("assistant_message"), content: z.string() }),
+  baseRunEventSchema.extend({ type: z.literal("stdout"), data: z.string() }),
+  baseRunEventSchema.extend({ type: z.literal("stderr"), data: z.string() }),
+  baseRunEventSchema.extend({ type: z.literal("file_changed"), path: z.string() }),
+  baseRunEventSchema.extend({ type: z.literal("task_updated"), taskId: z.string(), status: taskStatusSchema }),
+  baseRunEventSchema.extend({ type: z.literal("artifact_created"), path: z.string() }),
+  baseRunEventSchema.extend({
+    type: z.literal("phase_timing"),
+    provider: sandboxProviderNameSchema,
+    phase: z.string().min(1),
+    durationMs: z.number().int().min(0),
+    status: phaseTimingStatusSchema,
+    metadata: z.record(z.unknown()).optional(),
+  }),
+  baseRunEventSchema.extend({
+    type: z.literal("run_finished"),
+    status: z.enum(["succeeded", "failed"]),
+    error: z.string().optional(),
+  }),
+  baseRunEventSchema.extend({ type: z.literal("sandbox_stopped"), sandboxId: z.string() }),
+]);
+export type RunEvent = z.infer<typeof runEventSchema>;
 
 export const runtimeWakePayloadSchema = z.object({
   run: runSchema,

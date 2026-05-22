@@ -1,0 +1,8 @@
+{
+  "id": "provider-smoke",
+  "description": "Small provider matrix for validating scenario runner plumbing.",
+  "scenarios": [
+    "benchmarks/scenarios/local-mock.json",
+    "benchmarks/scenarios/blaxel-pi-baked-volume.json"
+  ]
+}

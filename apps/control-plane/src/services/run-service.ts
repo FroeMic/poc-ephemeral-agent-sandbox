@@ -89,105 +89,187 @@ export function createRunService(input: {
     }
   }
 
+  async function recordPhaseTiming(args: {
+    runId: string;
+    provider: SandboxProvider["name"];
+    phase: string;
+    started: number;
+    status: "succeeded" | "failed";
+    metadata?: Record<string, unknown>;
+  }) {
+    await recordEvent({
+      type: "phase_timing",
+      runId: args.runId,
+      timestamp: nowIso(),
+      provider: args.provider,
+      phase: args.phase,
+      durationMs: Math.max(0, Math.round(performance.now() - args.started)),
+      status: args.status,
+      ...(args.metadata ? { metadata: args.metadata } : {}),
+    });
+  }
+
+  async function timedPhase<T>(
+    provider: SandboxProvider,
+    runId: string,
+    phase: string,
+    operation: () => Promise<T>,
+    metadata?: Record<string, unknown>,
+  ): Promise<T> {
+    const started = performance.now();
+    try {
+      const result = await operation();
+      await recordPhaseTiming({
+        runId,
+        provider: provider.name,
+        phase,
+        started,
+        status: "succeeded",
+        ...(metadata ? { metadata } : {}),
+      });
+      return result;
+    } catch (error) {
+      await recordPhaseTiming({
+        runId,
+        provider: provider.name,
+        phase,
+        started,
+        status: "failed",
+        ...(metadata ? { metadata } : {}),
+      });
+      throw error;
+    }
+  }
+
   async function executeRun(
     run: Run,
     wakeEvent: RuntimeWakePayload["wakeEvent"],
     task: Task | undefined,
     provider: SandboxProvider,
   ): Promise<Run> {
+    const totalStarted = performance.now();
+    let totalStatus: "succeeded" | "failed" = "failed";
     let currentRun: Run = { ...run, status: "starting_sandbox", startedAt: nowIso() };
     await input.store.updateRun(currentRun);
 
-    const fs = await materializeRunFilesystem({
-      repoRoot: input.repoRoot,
-      dataDir: input.dataDir,
-      agentId: run.agentId,
-      workspaceId: run.workspaceId,
-      runId: run.id,
-      sharedBundleVersion: run.sharedBundleVersion,
-      wakePayload: {
+    try {
+      const fs = await timedPhase(provider, run.id, "local_materialize", () =>
+        materializeRunFilesystem({
+          repoRoot: input.repoRoot,
+          dataDir: input.dataDir,
+          agentId: run.agentId,
+          workspaceId: run.workspaceId,
+          runId: run.id,
+          sharedBundleVersion: run.sharedBundleVersion,
+          wakePayload: {
+            run: currentRun,
+            wakeEvent,
+            task,
+          },
+        }),
+      );
+
+      let handle;
+      try {
+        handle = await timedPhase(provider, run.id, "sandbox_acquire", () =>
+          provider.startRun({
+            runId: run.id,
+            agentId: run.agentId,
+            workspaceId: run.workspaceId,
+            agentHomePath: fs.agentHomePath,
+            workspacePath: fs.workspacePath,
+            sharedPath: fs.sharedPath,
+            runPath: fs.runPath,
+            wakePath: fs.wakePath,
+          }),
+        );
+      } catch (error) {
+        const message = formatErrorMessage(error);
+        await recordEvent({ type: "run_finished", runId: run.id, timestamp: nowIso(), status: "failed", error: message });
+        currentRun = { ...currentRun, status: "failed", finishedAt: nowIso(), error: message };
+        await input.store.updateRun(currentRun);
+        return currentRun;
+      }
+      await recordEvent({
+        type: "sandbox_started",
+        runId: run.id,
+        timestamp: nowIso(),
+        provider: handle.provider,
+        sandboxId: handle.sandboxId,
+      });
+
+      currentRun = { ...currentRun, status: "running" };
+      await input.store.updateRun(currentRun);
+
+      const payload: RuntimeWakePayload = {
         run: currentRun,
         wakeEvent,
-        task,
-      },
-    });
+        ...(task ? { task } : {}),
+        agentHomePath: handle.runtimePaths?.agentHomePath ?? fs.agentHomePath,
+        workspacePath: handle.runtimePaths?.workspacePath ?? fs.workspacePath,
+        sharedPath: handle.runtimePaths?.sharedPath ?? fs.sharedPath,
+        controlPlaneApiUrl: input.controlPlaneUrl,
+        runToken: handle.runtimePaths?.wakePath ?? fs.wakePath,
+      };
 
-    let handle;
-    try {
-      handle = await provider.startRun({
-        runId: run.id,
-        agentId: run.agentId,
-        workspaceId: run.workspaceId,
-        agentHomePath: fs.agentHomePath,
-        workspacePath: fs.workspacePath,
-        sharedPath: fs.sharedPath,
-        runPath: fs.runPath,
-        wakePath: fs.wakePath,
-      });
-    } catch (error) {
-      const message = formatErrorMessage(error);
-      await recordEvent({ type: "run_finished", runId: run.id, timestamp: nowIso(), status: "failed", error: message });
-      currentRun = { ...currentRun, status: "failed", finishedAt: nowIso(), error: message };
-      await input.store.updateRun(currentRun);
-      return currentRun;
-    }
-    await recordEvent({
-      type: "sandbox_started",
-      runId: run.id,
-      timestamp: nowIso(),
-      provider: handle.provider,
-      sandboxId: handle.sandboxId,
-    });
-
-    currentRun = { ...currentRun, status: "running" };
-    await input.store.updateRun(currentRun);
-
-    const payload: RuntimeWakePayload = {
-      run: currentRun,
-      wakeEvent,
-      ...(task ? { task } : {}),
-      agentHomePath: handle.runtimePaths?.agentHomePath ?? fs.agentHomePath,
-      workspacePath: handle.runtimePaths?.workspacePath ?? fs.workspacePath,
-      sharedPath: handle.runtimePaths?.sharedPath ?? fs.sharedPath,
-      controlPlaneApiUrl: input.controlPlaneUrl,
-      runToken: handle.runtimePaths?.wakePath ?? fs.wakePath,
-    };
-
-    async function markRunFailed(error: string, timestamp = nowIso()) {
-      if (task) {
-        const currentTask = input.store.getTask(task.id);
-        if (currentTask && currentTask.status !== task.status) {
-          await input.store.updateTaskStatus(task.id, task.status, timestamp);
+      async function markRunFailed(error: string, timestamp = nowIso()) {
+        if (task) {
+          const currentTask = input.store.getTask(task.id);
+          if (currentTask && currentTask.status !== task.status) {
+            await input.store.updateTaskStatus(task.id, task.status, timestamp);
+          }
         }
-      }
-      currentRun = { ...currentRun, status: "failed", finishedAt: timestamp, error };
-      await input.store.updateRun(currentRun);
-    }
-
-    try {
-      let runtimeFinish: Extract<RunEvent, { type: "run_finished" }> | undefined;
-      for await (const event of provider.exec({ handle, payload })) {
-        await recordEvent(event);
-        if (event.type === "run_finished") {
-          runtimeFinish = event;
-        }
-      }
-      if (runtimeFinish?.status === "failed") {
-        await markRunFailed(runtimeFinish.error ?? "Runtime reported failure", runtimeFinish.timestamp);
-      } else {
-        currentRun = { ...currentRun, status: "succeeded", finishedAt: runtimeFinish?.timestamp ?? nowIso() };
+        currentRun = { ...currentRun, status: "failed", finishedAt: timestamp, error };
         await input.store.updateRun(currentRun);
       }
-    } catch (error) {
-      const message = formatErrorMessage(error);
-      await recordEvent({ type: "run_finished", runId: run.id, timestamp: nowIso(), status: "failed", error: message });
-      await markRunFailed(message);
-    } finally {
-      await provider.stop(handle);
-      await recordEvent({ type: "sandbox_stopped", runId: run.id, timestamp: nowIso(), sandboxId: handle.sandboxId });
-    }
 
-    return currentRun;
+      try {
+        let runtimeFinish: Extract<RunEvent, { type: "run_finished" }> | undefined;
+        const runtimeStarted = performance.now();
+        try {
+          for await (const event of provider.exec({ handle, payload })) {
+            await recordEvent(event);
+            if (event.type === "run_finished") {
+              runtimeFinish = event;
+            }
+          }
+          await recordPhaseTiming({
+            runId: run.id,
+            provider: provider.name,
+            phase: "runtime_execute",
+            started: runtimeStarted,
+            status: runtimeFinish?.status === "failed" ? "failed" : "succeeded",
+          });
+        } catch (error) {
+          await recordPhaseTiming({
+            runId: run.id,
+            provider: provider.name,
+            phase: "runtime_execute",
+            started: runtimeStarted,
+            status: "failed",
+          });
+          throw error;
+        }
+        if (runtimeFinish?.status === "failed") {
+          await markRunFailed(runtimeFinish.error ?? "Runtime reported failure", runtimeFinish.timestamp);
+        } else {
+          currentRun = { ...currentRun, status: "succeeded", finishedAt: runtimeFinish?.timestamp ?? nowIso() };
+          await input.store.updateRun(currentRun);
+        }
+      } catch (error) {
+        const message = formatErrorMessage(error);
+        await recordEvent({ type: "run_finished", runId: run.id, timestamp: nowIso(), status: "failed", error: message });
+        await markRunFailed(message);
+      } finally {
+        await timedPhase(provider, run.id, "sandbox_release", () => provider.stop(handle), { sandboxId: handle.sandboxId });
+        await recordEvent({ type: "sandbox_stopped", runId: run.id, timestamp: nowIso(), sandboxId: handle.sandboxId });
+      }
+
+      totalStatus = currentRun.status === "failed" ? "failed" : "succeeded";
+      return currentRun;
+    } finally {
+      await recordPhaseTiming({ runId: run.id, provider: provider.name, phase: "total_run", started: totalStarted, status: totalStatus });
+    }
   }
 
   async function wake(rawRequest: unknown) {

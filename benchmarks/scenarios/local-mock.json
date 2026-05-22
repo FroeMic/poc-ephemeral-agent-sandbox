@@ -1,0 +1,18 @@
+{
+  "id": "local-mock",
+  "description": "Local deterministic runtime baseline with no sandbox provider.",
+  "provider": "local",
+  "runtime": "mock",
+  "lifecycle": "in-process",
+  "storage": {
+    "mode": "local-filesystem"
+  },
+  "warmupTurns": 0,
+  "measuredTurns": 3,
+  "agentId": "bench-local-agent",
+  "workspaceId": "bench-local-workspace",
+  "workload": {
+    "conversationShape": "single-short-message",
+    "message": "Say hi and reply in one short sentence."
+  }
+}

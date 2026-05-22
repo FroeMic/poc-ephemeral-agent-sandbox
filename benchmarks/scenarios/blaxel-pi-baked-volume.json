@@ -1,0 +1,25 @@
+{
+  "id": "blaxel-pi-baked-volume",
+  "description": "Blaxel sandbox with provider volume and Pi dependencies baked into the image.",
+  "provider": "blaxel",
+  "runtime": "pi",
+  "model": "openai/gpt-4o-mini",
+  "thinkingLevel": "low",
+  "installDeps": false,
+  "lifecycle": "create-delete",
+  "storage": {
+    "mode": "provider-volume"
+  },
+  "image": {
+    "reference": "sandbox/poc-pi-runner-real-template:latest",
+    "prebuild": ["node", "sandbox-api", "nextjs-template", "pi-dependencies"]
+  },
+  "warmupTurns": 1,
+  "measuredTurns": 3,
+  "agentId": "bench-blaxel-baked-agent",
+  "workspaceId": "bench-blaxel-baked-workspace",
+  "workload": {
+    "conversationShape": "single-short-message",
+    "message": "Reply in one short sentence."
+  }
+}

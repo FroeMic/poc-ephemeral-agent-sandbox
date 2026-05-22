@@ -249,9 +249,44 @@ export function renderDashboardHtml() {
         border-radius: 4px;
         padding: 2px 5px;
       }
+      .timings {
+        margin-bottom: 12px;
+        overflow: auto;
+      }
+      .timings-empty {
+        border: 1px solid #dbe3ee;
+        border-radius: 8px;
+        color: #657386;
+        padding: 10px;
+      }
+      .timings-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      .timings-table th,
+      .timings-table td {
+        border-bottom: 1px solid #e3eaf2;
+        padding: 7px 6px;
+        text-align: left;
+        white-space: nowrap;
+      }
+      .timings-table th {
+        color: #58677a;
+        font-weight: 750;
+        text-transform: uppercase;
+      }
+      .timings-table td:last-child,
+      .timings-table th:last-child {
+        text-align: right;
+      }
+      .timings-failed {
+        color: #9f2f2f;
+        font-weight: 750;
+      }
       pre {
-        min-height: 420px;
-        max-height: calc(100vh - 130px);
+        min-height: 320px;
+        max-height: calc(100vh - 290px);
         overflow: auto;
         margin: 0;
         padding: 13px;
@@ -340,6 +375,7 @@ export function renderDashboardHtml() {
             <div class="subtle">Last run: <code id="run-id">none</code></div>
           </div>
         </div>
+        <div class="timings" id="timings"><div class="timings-empty">No timings yet.</div></div>
         <pre id="events">No run yet.</pre>
       </section>
     </main>
@@ -359,6 +395,7 @@ export function renderDashboardHtml() {
       const agentStorageEl = document.querySelector("#agent-storage");
       const messagesEl = document.querySelector("#messages");
       const noticeEl = document.querySelector("#notice");
+      const timingsEl = document.querySelector("#timings");
       const eventsEl = document.querySelector("#events");
       const runIdEl = document.querySelector("#run-id");
       const statusEl = document.querySelector("#run-status");
@@ -404,9 +441,7 @@ export function renderDashboardHtml() {
           button.addEventListener("click", () => {
             if (isSubmitting) return;
             activeAgent = agent;
-            statusEl.textContent = "idle";
-            runIdEl.textContent = "none";
-            eventsEl.textContent = "No run yet.";
+            resetRunDebug();
             render();
           });
           agentListEl.append(button);
@@ -444,7 +479,53 @@ export function renderDashboardHtml() {
         renderMessages();
       }
 
+      function resetRunDebug(message = "No run yet.") {
+        statusEl.textContent = "idle";
+        runIdEl.textContent = "none";
+        eventsEl.textContent = message;
+        renderTimings([]);
+      }
+
+      function renderTimings(events) {
+        timingsEl.textContent = "";
+        const timings = (events || []).filter((event) => event.type === "phase_timing");
+        if (timings.length === 0) {
+          const empty = document.createElement("div");
+          empty.className = "timings-empty";
+          empty.textContent = "No timings yet.";
+          timingsEl.append(empty);
+          return;
+        }
+
+        const table = document.createElement("table");
+        table.className = "timings-table";
+        const head = document.createElement("thead");
+        const headerRow = document.createElement("tr");
+        for (const label of ["Phase", "Provider", "Status", "ms"]) {
+          const cell = document.createElement("th");
+          cell.textContent = label;
+          headerRow.append(cell);
+        }
+        head.append(headerRow);
+
+        const body = document.createElement("tbody");
+        for (const timing of timings) {
+          const row = document.createElement("tr");
+          if (timing.status === "failed") row.className = "timings-failed";
+          for (const value of [timing.phase, timing.provider, timing.status, String(timing.durationMs)]) {
+            const cell = document.createElement("td");
+            cell.textContent = value;
+            row.append(cell);
+          }
+          body.append(row);
+        }
+
+        table.append(head, body);
+        timingsEl.append(table);
+      }
+
       function renderEvents(value) {
+        renderTimings(value?.events || []);
         eventsEl.textContent = JSON.stringify(value, null, 2);
       }
 
@@ -501,6 +582,7 @@ export function renderDashboardHtml() {
 
         setSubmitting(true);
         statusEl.textContent = "running";
+        renderTimings([]);
         eventsEl.textContent = "Running chat turn...";
 
         try {
@@ -554,9 +636,7 @@ export function renderDashboardHtml() {
         }
         activeProvider = providerSelect.value;
         localStorage.setItem(providerStorageKey, activeProvider);
-        statusEl.textContent = "idle";
-        runIdEl.textContent = "none";
-        eventsEl.textContent = "No run yet.";
+        resetRunDebug();
       });
 
       input.addEventListener("keydown", (event) => {

@@ -72,3 +72,12 @@ test("chat failed runs show the run error instead of a fake Done assistant messa
   expect(html).toContain('throw new Error("Run failed: " + (body.run.error || "unknown error"))');
   expect(html).toContain("body.assistantMessage || \"Done.\"");
 });
+
+test("dashboard renders phase timing events as a compact table", () => {
+  const html = renderDashboardHtml();
+
+  expect(html).toContain('id="timings"');
+  expect(html).toContain("renderTimings");
+  expect(html).toContain('event.type === "phase_timing"');
+  expect(html).toContain("durationMs");
+});

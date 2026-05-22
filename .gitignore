@@ -4,3 +4,5 @@ dist/
 .env.local
 data/*
 !data/.gitkeep
+benchmarks/results/*
+!benchmarks/results/.gitkeep
